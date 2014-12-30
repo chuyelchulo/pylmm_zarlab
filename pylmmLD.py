@@ -66,8 +66,8 @@ for snp,id  in IN:
 
 indiNum= len(all_snps[0])
 
-for i in range(1):
-	i = 1
+for i in range(numSNP):
+	
 	correlation_coefficient= 0
 	index =0
 	if(i<=50):
