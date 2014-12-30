@@ -9,7 +9,6 @@ def correlation(snp1, snp2,numSNP):
 	length= len(snp1)
 	for i in range(length):
 		sum += snp1[i]* snp2[i]
-		print(sum),
 	return sum/numSNP	
 
 usage = """usage: %prog [options] --[tfile | bfile] plinkFileBase outfile """
@@ -24,6 +23,8 @@ basicGroup.add_option("--emmaSNP", dest="emmaFile", default=None,
 			help="\"EMMA\" file formats. This is just a text file with individuals on the rows and snps on the coumns.")
 basicGroup.add_option("--emmaNumSNPs", dest="numSNPs", type="int", default=0,
 			help="When providing the emmaSNP file you need to specify how many snps are in the file")
+basicGroup.add_option("--candidateNum", dest="candidateNums", type="int",default=100,help="You can specify the number of candidate snp to choose from to pair with a specific snp")
+
 basicGroup.add_option("-v", "--verbose", action="store_true", dest="verbose",
 			default=False, help="print extra info")
 
@@ -60,50 +61,53 @@ numSNP = IN.numSNPs
 m = 100
 W = np.ones((numSNP, m))*np.nan
 all_snps=[]
+count=0
 imputation = np.ones((numSNP,2))*np.nan
 for snp,id  in IN:
+	count +=1
+	if options.verbose and count % 1000 ==0:
+		sys.stderr.write("At SNP %d\n" % count)
 	all_snps.append(snp)
 
 indiNum= len(all_snps[0])
-
+if(options.verbose):
+	print("start to pick candidate...")
 for i in range(numSNP):
-	
+	if options.verbose and i % 1000 ==0:
+		sys.stderr.write("At SNP %d\n" % i)	
 	correlation_coefficient= 0
 	index =0
-	if(i<=50):
-		for j in range(min(50,numSNP-1-i)):
+	if(i<=options.candidateNums/2):
+		for j in range(min(options.candidateNums/2,numSNP-1-i)):
 			new_correlation = correlation(all_snps[i], all_snps[j+i+1],numSNP)
 			if(abs(new_correlation)>abs(correlation_coefficient)):
 				correlation_coefficient = new_correlation
 				index = j+i+1
-			print(j+1+i),
-			print(new_correlation)
 		for k in range (i):
-			new_correlation=correlation(all_snps[i], all_snps[k],numSNP)
-			if(abs(new_correlation)>abs(correlation_coefficient)):
-				correlation_coefficient = new_correlation
-				index=k
-	elif(i<numSNP-50):
+			if(imputation[k][1]==i):
+				if(abs(imputation[k][0])>abs(correlation_coefficient)):
+					correlation_coefficient = imputation[k][0]
+					index =k
+	elif(i<numSNP-options.candidateNums/2):
 		index=k
-		for j in range(100):
-			snp2 = i - 50 +j
-			if(snp2==i):
-				continue
-			new_correlation = correlation(all_snps[i],all_snps[snp2],numSNP)
+		for j in range(options.candidateNums/2):
+			snp2 = i - options.candidateNums/2 +j
+			if(imputation[snp2][1]==i):
+				if(abs(imputation[snp2][0])>abs(correlation_coefficient)):
+					correlation_coefficient = imputation[snp2][0]
+					index = snp2
+			snp3 = i + j +1
+			new_correlation = correlation(all_snps[i],all_snps[snp3],numSNP)
 			if(abs(new_correlation)>abs(correlation_coefficient)):					
 				correlation_coefficient = new_correlation
-				index = snp2
+				index = snp3
 	else:
-		for j in range(50):
-			snp2 = i-50+j
-			new_correlation = correlation(all_snps[i], all_snps[snp2],numSNP)
-			if(abs(new_correlation)>abs(correlation_coefficient)):
-				correlation_coefficient = new_correlation
-				index = snp2
-			new_correlation = correlation(all_snps[i],all_snps[snp2],numSNP)
-			if(abs(new_correlation)<abs(correlation_coefficient)):
-				correlation_coefficient = new_correlation
-				index = snp2  
+		for j in range(options.candidateNums/2):
+			snp2 = i-options.candidateNums/2+j
+			if(imputation[snp2][1]==i):
+				if(abs(imputation[snp2][0])>abs(correlation_coefficient)):
+					correlation_coefficient =imputation[snp2][0]
+					index=snp2
 		for k in range(numSNP- i -1):
 			snp2= i +k+1
 			new_correlation = correlation(all_snps[i], all_snps[snp2],numSNP)
