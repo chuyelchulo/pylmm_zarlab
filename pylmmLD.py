@@ -3,6 +3,15 @@
 import sys
 import pdb
 from optparse import OptionParser,OptionGroup
+
+def correlation(snp1, snp2,numSNP):
+	sum = 0
+	length= len(snp1)
+	for i in range(length):
+		sum += snp1[i]* snp2[i]
+		print(sum),
+	return sum/numSNP	
+
 usage = """usage: %prog [options] --[tfile | bfile] plinkFileBase outfile """
 
 parser = OptionParser(usage=usage)
@@ -50,16 +59,64 @@ print(IN.numSNPs)
 numSNP = IN.numSNPs
 m = 100
 W = np.ones((numSNP, m))*np.nan
-a = np.ones((numSNP, m))
 all_snps=[]
-
+imputation = np.ones((numSNP,2))*np.nan
 for snp,id  in IN:
 	all_snps.append(snp)
-#for i in range(numSNP):
 
+indiNum= len(all_snps[0])
 
-print(all_snps[0][9])
-np.savetxt(outFile, a)
+for i in range(1):
+	i = 1
+	correlation_coefficient= 0
+	index =0
+	if(i<=50):
+		for j in range(min(50,numSNP-1-i)):
+			new_correlation = correlation(all_snps[i], all_snps[j+i+1],numSNP)
+			if(abs(new_correlation)>abs(correlation_coefficient)):
+				correlation_coefficient = new_correlation
+				index = j+i+1
+			print(j+1+i),
+			print(new_correlation)
+		for k in range (i):
+			new_correlation=correlation(all_snps[i], all_snps[k],numSNP)
+			if(abs(new_correlation)>abs(correlation_coefficient)):
+				correlation_coefficient = new_correlation
+				index=k
+	elif(i<numSNP-50):
+		index=k
+		for j in range(100):
+			snp2 = i - 50 +j
+			if(snp2==i):
+				continue
+			new_correlation = correlation(all_snps[i],all_snps[snp2],numSNP)
+			if(abs(new_correlation)>abs(correlation_coefficient)):					
+				correlation_coefficient = new_correlation
+				index = snp2
+	else:
+		for j in range(50):
+			snp2 = i-50+j
+			new_correlation = correlation(all_snps[i], all_snps[snp2],numSNP)
+			if(abs(new_correlation)>abs(correlation_coefficient)):
+				correlation_coefficient = new_correlation
+				index = snp2
+			new_correlation = correlation(all_snps[i],all_snps[snp2],numSNP)
+			if(abs(new_correlation)<abs(correlation_coefficient)):
+				correlation_coefficient = new_correlation
+				index = snp2  
+		for k in range(numSNP- i -1):
+			snp2= i +k+1
+			new_correlation = correlation(all_snps[i], all_snps[snp2],numSNP)
+			if(abs(new_correlation)>abs(correlation_coefficient)):
+				correlation_coefficient = new_correlation
+				index= snp2
+	imputation[i][0]= correlation_coefficient
+	imputation[i][1]= index					
+#	print(i)
+#	print(index)
+#	print(correlation_coefficient)
+#print(all_snps)
+np.savetxt(outFile, imputation)
 
 	
 
