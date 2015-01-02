@@ -29,7 +29,7 @@ import struct
 import pdb
 
 class plink:
-   def __init__(self,fbase,kFile=None,phenoFile=None,type='b',normGenotype=True,readKFile=False,fastLMM_kinship=False):
+   def __init__(self,fbase,kFile=None,phenoFile=None,type='b',normGenotype=True,readKFile=False,fastLMM_kinship=False,impute=False):
 
       self.fbase = fbase
       self.type = type
@@ -43,6 +43,7 @@ class plink:
       self.phenos = None
       self.normGenotype = normGenotype
       self.phenoFile = phenoFile
+      self.impute=impute
       # Originally I was using the fastLMM style that has indiv IDs embedded.
       # NOW I want to use this module to just read SNPs so I'm allowing 
       # the programmer to turn off the kinship reading.
@@ -140,8 +141,20 @@ class plink:
 	 XX = X.strip().split()
 	 chrm,rsid,pos1,pos2 = tuple(XX[:4])
 	 XX = XX[4:]
+	#print(XX)
 	 G = self.getGenos_tped(XX)
+	 #if(self.have_read==1): print(G[:2])
 	 if self.normGenotype: G = self.normalizeGenotype(G)
+	#print(G)
+#	 print(self.have_read)	
+#	 print("we are here")
+#	 print(G)
+	 #print(self.snpFileHandle.readline().strip().split()[1]) 
+	 #if(self.have_read!=1):
+       	#	print(self.previousGenotype)
+	#	print(self.previousID)
+	#	self.previousGenotype = G
+	 #	self.previousID =self.snpFileHandle.readline().strip().split()[1]
 	 return G,self.snpFileHandle.readline().strip().split()[1]
 
       elif self.type == 'emma':
@@ -199,10 +212,22 @@ class plink:
       m = G[x].mean()
       if G[x].var() == 0: s = 1.0
       else: s = np.sqrt(G[x].var())
-      G[np.isnan(G)] = m 
-      if s == 0: G = G - m
-      else: G = (G - m) / s
-      
+
+      if not self.impute:
+	G[np.isnan(G)] = m 
+      if s == 0:
+	if not self.impute: 
+		G = G - m
+	else: 
+		G[x]=G[x]-m
+      else: 
+	if not self.impute:
+		G = (G - m) / s
+      	elif len(G[x])==len(G):
+		G = (G-m)/s
+	else: 
+		
+		G[x]= ((G[x]-m)/s)
       return G
 
    def getPhenos(self,phenoFile=None):
@@ -250,6 +275,7 @@ class plink:
       f.close()
 
       self.N = len(keys)
+      print(self.N)	
       sys.stderr.write("Read %d individuals from %s\n" % (self.N, famFile))
 
       return keys

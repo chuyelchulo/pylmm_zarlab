@@ -98,7 +98,7 @@ advancedGroup.add_option("-v", "--verbose",
 experimentalGroup.add_option("--kfile2", dest="kfile2", 
                   help="The location of a second kinship file.  This file has the same format as the first kinship.  This might be used if you want to correct for another form of confounding.")
 #impute missing data
-experimentalGroup.add_option("--inpute",action="store_true",dest="impute", default=False,help="impute missiong dat")
+experimentalGroup.add_option("--impute",action="store_true",dest="impute", default=False,help="impute missiong data using correlation with other snps")
 
 
 parser.add_option_group(basicGroup)
@@ -128,10 +128,10 @@ if not options.kfile:
 
 # READING PLINK input
 if options.verbose: sys.stderr.write("Reading SNP input...\n")
-if options.bfile: IN = input.plink(options.bfile,type='b', phenoFile=options.phenoFile,normGenotype=options.normalizeGenotype)
-elif options.tfile: IN = input.plink(options.tfile,type='t', phenoFile=options.phenoFile,normGenotype=options.normalizeGenotype)
+if options.bfile: IN = input.plink(options.bfile,type='b', phenoFile=options.phenoFile,normGenotype=options.normalizeGenotype,impute=options.impute)
+elif options.tfile: IN = input.plink(options.tfile,type='t', phenoFile=options.phenoFile,normGenotype=options.normalizeGenotype,impute=options.impute)
 #elif options.pfile: IN = input.plink(options.pfile,type='p', phenoFile=options.phenoFile,normGenotype=options.normalizeGenotype)
-elif options.emmaFile: IN = input.plink(options.emmaFile,type='emma', phenoFile=options.phenoFile,normGenotype=options.normalizeGenotype)
+elif options.emmaFile: IN = input.plink(options.emmaFile,type='emma', phenoFile=options.phenoFile,normGenotype=options.normalizeGenotype,impute=options.impute)
 else: parser.error("You must provide at least one PLINK input file base")
 
 if not os.path.isfile(options.phenoFile or IN.fbase + '.phenos') and not os.path.isfile(options.emmaPheno):
