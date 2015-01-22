@@ -6,6 +6,23 @@ from optparse import OptionParser,OptionGroup
 import numpy as np
 from numpy import *
 
+def read_stats(read_fn):
+	f=open(read_fn, 'r')
+	first_line = True
+	all_stats=[]
+	for line in f:
+		if first_line:
+			first_line=False
+			continue
+		line=line.strip().split()
+		S=[]
+		for x in line:
+			try:
+				S.append(float(x))
+			except: S.append(np.nan)
+		all_stats.append(S)
+	return all_stats
+
 def correlation(a):
 #snp is a matrix, each row a snp
 	snp=np.array(a)
@@ -35,6 +52,10 @@ basicGroup.add_option("-v", "--verbose", action="store_true", dest="verbose",
 
 basicGroup.add_option("--evaluate", action="store_true", dest="evaluate",default=False, help="evaluation")
 basicGroup.add_option("--evaluationfile",dest="answer", help="the base for a PLINK tped answer")
+basicGroup.add_option("--imputeStats", action="store_true", dest="imputeStats", default=False, help="multivariate stat imputation")
+basicGroup.add_option("--statsfile", dest="statFile",type="string",default="", help="you need to provide the stats file if you want to impute the stats")
+basicGroup.add_option("--statsAns",dest="statsAns", type="string", default="")
+
 parser.add_option_group(basicGroup)
 (options, args) = parser.parse_args()
 import sys
@@ -96,10 +117,6 @@ if options.evaluate:
 	for snp,id in MeanInpute:
 		zeroImpute.append(snp)
 #########################
-print(all_snps[1])
-print(all_snps_single[1])
-print(zeroImpute[1])
-print(answer[1])
 
 if(options.verbose):
 	sys.stderr.write("start to pick candidate...")
@@ -203,7 +220,83 @@ elif options.multi :
 		all_snps[i:min(numSNP, i+options.neighborNums)] = temp.transpose()
 		
 		if(i + size>=numSNP): break
+elif options.imputeStats:
+	file_name = options.statFile
+	stats= read_stats(file_name)
+	stats = np.array(stats)
+	length= len(stats)
+
+	answer_name=options.statsAns
+	answer = read_stats(answer_name)
+	answer= np.array(answer)
+
+	imputed=[]
+	real=[]
+	for i in range(0,numSNP,options.neighborNums):
+		temp=np.array(all_snps[i:min(numSNP,i+options.neighborNums)])
+	#	print(temp)
+		temp_cor = correlation(temp)
+	#	print(temp_cor)
+		size=len(temp)
+		block_stats=stats[i:i+size]
+		block_stats=block_stats[:,3]
+		block_stats=block_stats.transpose()
+	#	print(stats)
 		
+		block_answer=answer[i:i+size]
+		block_answer=block_answer[:,3]
+		block_stats=block_stats.transpose()
+
+
+			
+		missing = np.isnan(block_stats)	
+		R=temp_cor[missing]
+		if not len(temp_cor[missing]):
+			continue
+		no_missing= True-np.isnan(block_stats)
+		R=R[:,no_missing]
+		select= (abs(R))>0.3
+		select= np.array(select[0])
+		R=R[:,select]
+		sigma= temp_cor[no_missing]
+		sigma=sigma[:,no_missing]
+		sigma= sigma[select]
+		sigma=sigma[:,select]
+		St= block_stats[no_missing]
+		St=St[select]
+		block_stats[missing] = dot(dot(R,pinv(sigma)),St)
+		for k in block_stats[missing]:
+			imputed.append(k)
+		for j in block_answer[missing]:
+			real.append(j)
+
+#		print(block_stats[missing]),
+		variance = dot(dot(R,pinv(sigma)),R.transpose())
+		if(i==620):
+			print(i)
+			print(temp_cor)
+			print(R)
+			print(sigma)
+			print(variance)
+		if(i+size>=numSNP): break		
+	#print(imputed)
+	#print(real)
+	vector1 = np.array(imputed)
+	vector2=np.array(real)
+	m1=vector1.mean()
+	m2=vector2.mean()
+	s1=np.sqrt(vector1.var())
+	s2=np.sqrt(vector2.var())
+	if s1==0:
+		vector1= vector1-m1
+	else:
+		vector1= (vector1-m1)/s1
+	if s2==0:
+		vector2= vecgtor2-m2
+	else:
+		vector2= (vector2-m2)/s2
+	result = abs(dot(vector1, vector2.transpose()))/len(vector1)
+	print result 
 else:
 	optimal_imputation=[[] for  i in range(numSNP)]
 	for i in range(0,numSNP,options.neighborNums/2):
@@ -287,7 +380,12 @@ else:
 #		non_imputed.append(all_ids[i])
 #		sys.stderr.write("snp %s is not replaced \n" % all_ids[i])
 #all_snps=np.array(all_snps)
-np.savetxt(outFile, all_snps)
+
+
+if options.imputeStats:
+	np.savetxt(outFile, stats)
+else:
+	np.savetxt(outFile, all_snps)
 
 	
 
