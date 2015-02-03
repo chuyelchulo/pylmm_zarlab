@@ -325,7 +325,7 @@ for snp, id in IN:
     nmiss = n - v.sum()
 
     # Check SNPs for missing values
-    if v.sum():
+    if v.sum(): # v.sum() is the number of missing values
         keeps = True - v
         xs = x[keeps, :]
         if keeps.sum() <= 1 or xs.var() <= 1e-6:
