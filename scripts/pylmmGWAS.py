@@ -115,7 +115,8 @@ experimentalGroup.add_option("--kfile2", dest="kfile2",
 
 # Annotation Group Options
 annotationGroup.add_option("--afile", dest="afile", default=False,
-                            help = "The location of an annotation file.  This file is (as yet) formatted in two columns. The first column has IDs and the second has the nucleotides. If the argument is \"bim\", the alleles are read from the .bim file.")
+                            help = "The location of an annotation file.  This file is (as yet) formatted in two columns. The first column has IDs and the second has the nucleotides you want printed.")
+
 
 parser.add_option_group(basicGroup)
 parser.add_option_group(advancedGroup)
@@ -136,18 +137,31 @@ if len(args) != 1:
     sys.exit()
 
 # Reading Annotation File
-if options.annotationFile:
+if options.afile:
     annotation_dict = {}
-    for line in annotation_file:
-        line = line.split('\t')
-        annotation_dict[line[0]] = line[1]
+    # Remove weird excel formatting
+    lines = '\n'.join([line for line in open(options.afile, 'r')])
+    chars = list(lines)
+    weird_returns = [i for i in range(len(chars)) if chars[i] == '\r']
+    for i in range(len(weird_returns)):
+        chars[weird_returns[i]] = '\n'
+    lines = ''.join(chars)
+    # print lines[:400]
+    lines = lines.split('\n')
+    for line in lines:
+        # print line
+        line = line.strip().split('\t')
+        snp_id = line[0]
+        allele = line[1]
+        assert len(allele) == 1
+        annotation_dict[snp_id] = allele
 
-
+    # print len(annotation_dict.keys())
 
 outFile = args[0]
 
 if not options.tfile and not options.bfile and not options.emmaFile:
-    #if not options.pfile and not options.tfile and not options.bfile:
+    #if not options.pfile and not options.tfile and not options.file:
     parser.error(
         "You must provide at least one PLINK input file base (--tfile or --bfile) or an EMMA formatted file (--emmaSNP).")
 if not options.kfile:
@@ -296,7 +310,10 @@ TS = []
 count = 0
 out = open(outFile, 'w')
 
-printOutHead()
+if options.afile:
+    printOutHeadAnnotated()
+else:
+    printOutHead()
 
 for snp, id in IN:
     count += 1
@@ -305,6 +322,8 @@ for snp, id in IN:
 
     x = snp[keep].reshape((n, 1))
     v = np.isnan(x).reshape((-1,))
+    nmiss = n - v.sum()
+
     # Check SNPs for missing values
     if v.sum():
         keeps = True - v
@@ -312,12 +331,11 @@ for snp, id in IN:
         if keeps.sum() <= 1 or xs.var() <= 1e-6:
             PS.append(np.nan)
             TS.append(np.nan)
-            if options.annotationFile:
+            if options.afile:
                 outputResultAnnotated(id, np.nan, np.nan, np.nan, np.nan, np.nan, annotation_dict=annotation_dict)
             else:
                 outputResult(id, np.nan, np.nan, np.nan, np.nan)
             continue
-        nmiss = keeps.sum()  # For some reason, NMISS in plink means number *NOT* missing.
 
         # Its ok to center the genotype -  I used options.normalizeGenotype to
         # force the removal of missing genotypes as opposed to replacing them with MAF.
@@ -341,16 +359,18 @@ for snp, id in IN:
         if x.var() == 0:
             PS.append(np.nan)
             TS.append(np.nan)
-            outputResult(id, np.nan, np.nan, np.nan, np.nan)
+            if options.afile:
+                outputResultAnnotated(id, np.nan, np.nan, np.nan, np.nan, np.nan, annotation_dict=annotation_dict)
+            else:
+                outputResult(id, np.nan, np.nan, np.nan, np.nan)
             continue
 
         if options.refit: L.fit(X=x, REML=options.REML)
         ts, ps, beta, betaVar = L.association(x, REML=options.REML, returnBeta=True)
 
-    if options.annotationFile:
+    if options.afile:
         outputResultAnnotated(id, beta, np.sqrt(betaVar).sum(), ts, ps, nmiss, annotation_dict=annotation_dict)
     else:
         outputResult(id, beta, np.sqrt(betaVar).sum(), ts, ps)
     PS.append(ps)
     TS.append(ts)
-
