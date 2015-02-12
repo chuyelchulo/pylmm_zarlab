@@ -59,7 +59,7 @@ def GWAS_GxE(Y, snp, exposure, args={}):
 if __name__ == "__main__":
     study_size = 1000
     n_rand_genes = 268
-    ## Pick some random a
+    ## Pick some random data
     rand_gene_mafs = np.random.uniform(0.1, 0.5, size=n_rand_genes)
     rand_genes = [np.random.binomial(2, rand_gene_mafs[i], study_size)
                   for i in range(len(rand_gene_mafs))]

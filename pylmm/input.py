@@ -374,12 +374,3 @@ class plink:
         P = P[L, :]
 
         return P
-
-
-      
-
-
-      
-
-      
-	    

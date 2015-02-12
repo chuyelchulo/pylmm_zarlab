@@ -206,12 +206,14 @@ class LMM:
         self.nonmissing = x
 
         if len(Kva) == 0 or len(Kve) == 0:
-            if self.verbose: sys.stderr.write(
+            if self.verbose:
+                sys.stderr.write(
                 "Obtaining eigendecomposition for %dx%d matrix\n" % (K.shape[0], K.shape[1]))
             begin = time.time()
             Kva, Kve = linalg.eigh(K)
             end = time.time()
-            if self.verbose: sys.stderr.write("Total time: %0.3f\n" % (end - begin))
+            if self.verbose:
+                sys.stderr.write("Total time: %0.3f\n" % (end - begin))
 
         self.K = K
         self.Kva = Kva
@@ -273,7 +275,7 @@ class LMM:
 	     REML is computed by adding additional terms to the standard LL and can be computed by setting REML=True.
         """
 
-        if X == None:
+        if X is None:
             X = self.X0t
         elif stack:
             self.X0t_stack[:, (self.q)] = matrixMult(self.Kve.T, X)[:, 0]
@@ -332,7 +334,7 @@ class LMM:
 	 Given this optimum, the function computes the LL and associated ML solutions.
       """
 
-        if X == None:
+        if X is None:=
             X = self.X0t
         else:
             #X = np.hstack([self.X0t,matrixMult(self.Kve.T, X)])

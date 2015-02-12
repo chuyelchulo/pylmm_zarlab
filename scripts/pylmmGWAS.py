@@ -49,22 +49,28 @@ def outputResultAnnotated(id, beta, betaSD, ts, ps, nmiss, annotation_dict):
 
 from optparse import OptionParser, OptionGroup
 
-usage = """usage: %prog [options] --kfile kinshipFile --[tfile | bfile] plinkFileBase outfileBase
+usage = """usage: %prog [options] --kfile kinshipFile --[tfile | bfile] plinkFileBase outfileBase --afile annotationfile --GxE
 
-This program provides basic genome-wide association (GWAS) functionality.  You provide a phenotype and genotype file as well as a pre-computed (use pylmmKinship.py) kinship matrix and the program outputs a result file with information about each SNP, including the association p-value.  
-The input file are all standard plink formatted with the first two columns specifiying the individual and family ID.  For the phenotype file, we accept either NA or -9 to denote missing values.  
+This program provides basic genome-wide association (GWAS) functionality.
+You provide a phenotype and genotype file as well as a pre-computed (use pylmmKinship.py)
+kinship matrix and the program outputs a result file with information about each SNP, including the association p-value.
+The input file are all standard plink formatted with the first two columns specifying the individual and family ID.
+For the phenotype file, we accept either NA or -9 to denote missing values.
 
 Basic usage:
 
       python pylmmGWAS.py -v --bfile plinkFile --kfile preComputedKinship.kin --phenofile plinkFormattedPhenotypeFile resultFile
 
 	    """
+
+
 parser = OptionParser(usage=usage)
 
 basicGroup = OptionGroup(parser, "Basic Options")
 advancedGroup = OptionGroup(parser, "Advanced Options")
 experimentalGroup = OptionGroup(parser, "Experimental Options")
 annotationGroup = OptionGroup(parser, "Annotation Options")
+GxEGroup = OptionGroup(parser, "GxE Options")
 
 #basicGroup.add_option("--pfile", dest="pfile",
 #                  help="The base for a PLINK ped file")
@@ -117,6 +123,10 @@ experimentalGroup.add_option("--kfile2", dest="kfile2",
 annotationGroup.add_option("--afile", dest="afile", default=False,
                             help = "The location of an annotation file.  This file is (as yet) formatted in two columns. The first column has IDs and the second has the nucleotides you want printed.")
 
+# GxE Group
+GxEGroup.add_option("--gxe", "--GxE",
+                    action="store_true", dest="runGxE", default=False,
+                    help="Run a gene-by-environment test instead of the gene test")
 
 parser.add_option_group(basicGroup)
 parser.add_option_group(advancedGroup)
@@ -223,7 +233,8 @@ else:
 
 if np.isnan(X0).sum():
     parser.error(
-        "The covariate file %s contains missing values. At this time we are not dealing with this case.  Either remove those individuals with missing values or replace them in some way.")
+        "The covariate file %s contains missing values. At this time we are not dealing with this case.  "
+        "Either remove those individuals with missing values or replace them in some way.")
 
 # READING Kinship - major bottleneck for large datasets
 if options.verbose: sys.stderr.write("Reading kinship...\n")
@@ -288,6 +299,61 @@ else:
     Kva = []
     Kve = []
 
+
+# Preprocess the data if a GxE
+if options.runGxE:
+    print 'Converting data to GxE form...'
+    from pylmm.lmm import calculateKinship
+    assert X0.shape[1] == 2
+    covariate_exposure = X0[:, -1]
+    snp = np.array([x for x, ignore_id in IN])
+    # print snp.shape
+    # import sys
+    # sys.exit()
+
+    exposure_levels = set(covariate_exposure)
+    assert len(exposure_levels) == 2  # Co
+    sorted_snps = []
+    sorted_Ks = []
+    sorted_exposures = []
+    unsort_mask = []
+    for level in exposure_levels:
+        # We need to calculate the kinship separately for each value of
+        # the exposure. Sorting the data will make it "look" nicer
+        # if we ever want to print it out as well.
+        mask = covariate_exposure == level
+        same_covariate_snp = snp[mask]
+        K_block = calculateKinship(same_covariate_snp)
+
+        sorted_Ks.append(K_block)
+        # print mask
+        unsort_mask.append(np.arange(len(mask))[mask])
+        # print unsort_mask
+
+    unsort_mask = np.concatenate(unsort_mask)
+    unsort_mask = np.argsort(unsort_mask)
+    # print unsort_mask
+    K_GxE = linalg.block_diag(*sorted_Ks)
+    # print K_GxE
+    # Kinship is 0 between individuals with different
+    # levels for their exposures, so the matrix has
+    # a block-diagonal structure.
+    K = K_GxE[:, unsort_mask]
+    K = K[unsort_mask, :]
+    # print K
+    print K.shape
+    Kva, Kve = linalg.eigh(K)
+
+    X0 = X0[:, :-1]
+    # The covariate needs to be replaced with 1's, since it's going to be
+
+    ## Check that the kinship matrix has zeroes where covariate exposure is not the same
+    for i in range(len(covariate_exposure)):
+        for j in range(i, len(covariate_exposure)):
+            if covariate_exposure[i] != covariate_exposure[j]:
+                assert K[i, j] == 0
+    covariate_exposure = covariate_exposure.reshape(covariate_exposure.shape[0], 1)
+
 # CREATE LMM object for association
 n = K.shape[0]
 if not options.kfile2:
@@ -297,12 +363,14 @@ else:
 
 # Fit the null model -- if refit is true we will refit for each SNP, so no reason to run here
 if not options.refit:
-    if options.verbose: sys.stderr.write("Computing fit for null model\n")
+    if options.verbose:
+        sys.stderr.write("Computing fit for null model\n")
     L.fit()
-    if options.verbose and not options.kfile2: sys.stderr.write(
-        "\t heritability=%0.3f, sigma=%0.3f\n" % (L.optH, L.optSigma))
-    if options.verbose and options.kfile2: sys.stderr.write(
-        "\t heritability=%0.3f, sigma=%0.3f, w=%0.3f\n" % (L.optH, L.optSigma, L.optW))
+    if options.verbose and not options.kfile2:
+        sys.stderr.write("\t heritability=%0.3f, sigma=%0.3f\n" % (L.optH, L.optSigma))
+    if options.verbose and options.kfile2:
+        sys.stderr.write("\t heritability=%0.3f, sigma=%0.3f, w=%0.3f\n" % (L.optH, L.optSigma, L.optW))
+
 
 # Buffers for pvalues and t-stats
 PS = []
@@ -321,6 +389,13 @@ for snp, id in IN:
         sys.stderr.write("At SNP %d\n" % count)
 
     x = snp[keep].reshape((n, 1))
+    if options.runGxE:
+        # print x
+        # print covariate_exposure
+        # print x.shape
+        # print covariate_exposure.shape
+        x = x * covariate_exposure
+        # print x
     v = np.isnan(x).reshape((-1,))
     nmiss = n - v.sum()
 
@@ -339,11 +414,13 @@ for snp, id in IN:
 
         # Its ok to center the genotype -  I used options.normalizeGenotype to
         # force the removal of missing genotypes as opposed to replacing them with MAF.
-        if not options.normalizeGenotype: xs = (xs - xs.mean()) / np.sqrt(xs.var())
+        if not options.normalizeGenotype:
+            xs = (xs - xs.mean()) / np.sqrt(xs.var())
         Ys = Y[keeps]
         X0s = X0[keeps, :]
         Ks = K[keeps, :][:, keeps]
-        if options.kfile2: K2s = K2[keeps, :][:, keeps]
+        if options.kfile2:
+            K2s = K2[keeps, :][:, keeps]
         if options.kfile2:
             Ls = LMM_withK2(Ys, Ks, X0=X0s, verbose=options.verbose, K2=K2s)
         else:
