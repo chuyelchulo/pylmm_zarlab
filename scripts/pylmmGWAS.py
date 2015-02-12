@@ -121,12 +121,12 @@ experimentalGroup.add_option("--kfile2", dest="kfile2",
 
 # Annotation Group Options
 annotationGroup.add_option("--afile", dest="afile", default=False,
-                            help = "The location of an annotation file.  This file is (as yet) formatted in two columns. The first column has IDs and the second has the nucleotides you want printed.")
+                           help="The location of an annotation file.  This file is (as yet) formatted in two columns. The first column has IDs and the second has the nucleotides you want printed.")
 
 # GxE Group
 GxEGroup.add_option("--gxe", "--GxE",
                     action="store_true", dest="runGxE", default=False,
-                    help="Run a gene-by-environment test instead of the gene test")
+                    help="Run a gene-by-environment test instead of the gene test; the environment variable should be binary and written as the last column of the covariate file.")
 
 parser.add_option_group(basicGroup)
 parser.add_option_group(advancedGroup)
@@ -139,7 +139,7 @@ import sys
 import os
 import numpy as np
 from scipy import linalg
-from pylmm.lmm import LMM
+from pylmm.lmm import LMM, calculateKinship
 from pylmm import input
 
 if len(args) != 1:
@@ -281,18 +281,21 @@ Y = IN.phenos[:, options.pheno]
 v = np.isnan(Y)
 keep = True - v
 if v.sum():
-    if options.verbose: sys.stderr.write("Cleaning the phenotype vector by removing %d individuals...\n" % (v.sum()))
+    if options.verbose:
+        sys.stderr.write("Cleaning the phenotype vector by removing %d individuals...\n" % (v.sum()))
     Y = Y[keep]
     X0 = X0[keep, :]
     K = K[keep, :][:, keep]
-    if options.kfile2: K2 = K2[keep, :][:, keep]
+    if options.kfile2:
+        K2 = K2[keep, :][:, keep]
     Kva = []
     Kve = []
 
 # Only load the decomposition if we did not remove individuals.
 # Otherwise it would not be correct and we would have to compute it again.
 if not v.sum() and options.eigenfile:
-    if options.verbose: sys.stderr.write("Loading pre-computed eigendecomposition...\n")
+    if options.verbose:
+        sys.stderr.write("Loading pre-computed eigendecomposition...\n")
     Kva = np.load(options.eigenfile + ".Kva")
     Kve = np.load(options.eigenfile + ".Kve")
 else:
@@ -303,7 +306,6 @@ else:
 # Preprocess the data if a GxE
 if options.runGxE:
     print 'Converting data to GxE form...'
-    from pylmm.lmm import calculateKinship
     assert X0.shape[1] == 2
     covariate_exposure = X0[:, -1]
     snp = np.array([x for x, ignore_id in IN])
@@ -344,9 +346,6 @@ if options.runGxE:
     print K.shape
     Kva, Kve = linalg.eigh(K)
 
-    X0 = X0[:, :-1]
-    # The covariate needs to be replaced with 1's, since it's going to be
-
     ## Check that the kinship matrix has zeroes where covariate exposure is not the same
     for i in range(len(covariate_exposure)):
         for j in range(i, len(covariate_exposure)):
@@ -372,7 +371,7 @@ if not options.refit:
         sys.stderr.write("\t heritability=%0.3f, sigma=%0.3f, w=%0.3f\n" % (L.optH, L.optSigma, L.optW))
 
 
-# Buffers for pvalues and t-stats
+# Buffers for p-values and t-stats
 PS = []
 TS = []
 count = 0
@@ -390,17 +389,19 @@ for snp, id in IN:
 
     x = snp[keep].reshape((n, 1))
     if options.runGxE:
+        snp_copy = x.copy()
+        this_covariate_exposure = covariate_exposure[keep]
         # print x
-        # print covariate_exposure
+        # print this_covariate_exposure
         # print x.shape
-        # print covariate_exposure.shape
-        x = x * covariate_exposure
+        # print this_covariate_exposure.shape
+        x = x * this_covariate_exposure
         # print x
     v = np.isnan(x).reshape((-1,))
     nmiss = n - v.sum()
 
     # Check SNPs for missing values
-    if v.sum(): # v.sum() is the number of missing values
+    if v.sum():  # v.sum() is the number of missing values
         keeps = True - v
         xs = x[keeps, :]
         if keeps.sum() <= 1 or xs.var() <= 1e-6:
@@ -418,7 +419,11 @@ for snp, id in IN:
             xs = (xs - xs.mean()) / np.sqrt(xs.var())
         Ys = Y[keeps]
         X0s = X0[keeps, :]
+        if options.runGxE:
+            snp_copys = snp_copy[keeps]
+            X0s = np.hstack([X0s, snp_copys])
         Ks = K[keeps, :][:, keeps]
+
         if options.kfile2:
             K2s = K2[keeps, :][:, keeps]
         if options.kfile2:
@@ -428,9 +433,9 @@ for snp, id in IN:
         if options.refit:
             Ls.fit(X=xs, REML=options.REML)
         else:
-            #try:
+            # try:
             Ls.fit(REML=options.REML)
-            #except: pdb.set_trace()
+            # except: pdb.set_trace()
         ts, ps, beta, betaVar = Ls.association(xs, REML=options.REML, returnBeta=True)
     else:
         if x.var() == 0:
@@ -442,7 +447,8 @@ for snp, id in IN:
                 outputResult(id, np.nan, np.nan, np.nan, np.nan)
             continue
 
-        if options.refit: L.fit(X=x, REML=options.REML)
+        if options.refit:
+            L.fit(X=x, REML=options.REML)
         ts, ps, beta, betaVar = L.association(x, REML=options.REML, returnBeta=True)
 
     if options.afile:
