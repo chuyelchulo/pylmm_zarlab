@@ -2,7 +2,7 @@
 from distutils.core import setup
 
 setup(name='pyLMM',
-      version='0.99',
+      version='0.99b',
       author="Nick Furlotte",
       author_email='nick.furlotte@gmail.com',
       url="https://github.com/nickFurlotte/pylmm",
