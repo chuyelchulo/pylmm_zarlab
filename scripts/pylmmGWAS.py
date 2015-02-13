@@ -139,8 +139,7 @@ import sys
 import os
 import numpy as np
 from scipy import linalg
-from pylmm.lmm import LMM, calculateKinship
-from pylmm import input
+from pylmm import input, lmm
 
 if len(args) != 1:
     parser.print_help()
@@ -325,7 +324,7 @@ if options.runGxE:
         # if we ever want to print it out as well.
         mask = covariate_exposure == level
         same_covariate_snp = snp[mask]
-        K_block = calculateKinship(same_covariate_snp)
+        K_block = lmm.calculateKinship(same_covariate_snp)
 
         sorted_Ks.append(K_block)
         # print mask
@@ -356,9 +355,9 @@ if options.runGxE:
 # CREATE LMM object for association
 n = K.shape[0]
 if not options.kfile2:
-    L = LMM(Y, K, Kva, Kve, X0, verbose=options.verbose)
+    L = lmm.LMM(Y, K, Kva, Kve, X0, verbose=options.verbose)
 else:
-    L = LMM_withK2(Y, K, Kva, Kve, X0, verbose=options.verbose, K2=K2)
+    L = lmm.LMM_withK2(Y, K, Kva, Kve, X0, verbose=options.verbose, K2=K2)
 
 # Fit the null model -- if refit is true we will refit for each SNP, so no reason to run here
 if not options.refit:
@@ -427,9 +426,9 @@ for snp, id in IN:
         if options.kfile2:
             K2s = K2[keeps, :][:, keeps]
         if options.kfile2:
-            Ls = LMM_withK2(Ys, Ks, X0=X0s, verbose=options.verbose, K2=K2s)
+            Ls = lmm.LMM_withK2(Ys, Ks, X0=X0s, verbose=options.verbose, K2=K2s)
         else:
-            Ls = LMM(Ys, Ks, X0=X0s, verbose=options.verbose)
+            Ls = lmm.LMM(Ys, Ks, X0=X0s, verbose=options.verbose)
         if options.refit:
             Ls.fit(X=xs, REML=options.REML)
         else:
