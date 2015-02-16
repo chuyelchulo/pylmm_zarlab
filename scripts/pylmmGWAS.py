@@ -64,13 +64,6 @@ Basic usage:
 	    """
 
 
-# Installing this on computer with restricted access, this may help
-# find the lmm file.
-import os
-current_path = os.path.realpath(__file__)
-pylmm_folder = os.path.split(current_path)[0]
-sys.path.append(pylmm_folder)
-
 
 parser = OptionParser(usage=usage)
 
