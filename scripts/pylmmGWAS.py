@@ -336,13 +336,13 @@ if options.runGxE:
     print 'Converting data to GxE form...'
     covariate_exposure = X0[:, -1]
     snp = np.array([x for x, ignore_id in IN])
-    import matplotlib
-    matplotlib.use('agg')
-    import matplotlib.pyplot as plt
-    plt.figure(figsize=(100, 80))
-    import seaborn as sns
-    sns.heatmap(K)
-    plt.savefig('K_before.png')
+    # import matplotlib
+    # matplotlib.use('agg')
+    # import matplotlib.pyplot as plt
+    # plt.figure(figsize=(100, 80))
+    # import seaborn as sns
+    # sns.heatmap(K)
+    # plt.savefig('K_before.png')
     exposure_levels = set(covariate_exposure)
     assert len(exposure_levels) == 2  # We only allow binary covaritates.
     sorted_snps = []
@@ -370,9 +370,9 @@ if options.runGxE:
     # a block-diagonal structure.
     K = K_GxE[:, unsort_mask]
     K = K[unsort_mask, :]
-    plt.figure(figsize=(100, 80))
-    sns.heatmap(K)
-    plt.savefig('K_after.png')
+    # plt.figure(figsize=(100, 80))
+    # sns.heatmap(K)
+    # plt.savefig('K_after.png')
     Kva, Kve = linalg.eigh(K)
 
     # Check that the kinship matrix has zeroes where covariate exposure is not the same
