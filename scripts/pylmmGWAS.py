@@ -5,7 +5,7 @@
 # Copyright (C) 2013  Nicholas A. Furlotte (nick.furlotte@gmail.com)
 
 # The program is free for academic use. Please contact Nick Furlotte
-#<nick.furlotte@gmail.com> if you are interested in using the software for
+# <nick.furlotte@gmail.com> if you are interested in using the software for
 #commercial purposes.
 
 #The software must not be modified and distributed without prior
@@ -62,8 +62,6 @@ Basic usage:
       python pylmmGWAS.py -v --bfile plinkFile --kfile preComputedKinship.kin --phenofile plinkFormattedPhenotypeFile resultFile
 
 	    """
-
-
 
 parser = OptionParser(usage=usage)
 
@@ -167,7 +165,7 @@ if options.afile:
         assert len(allele) == 1
         annotation_dict[snp_id] = allele
 
-    # print len(annotation_dict.keys())
+        # print len(annotation_dict.keys())
 
 outFile = args[0]
 
@@ -292,6 +290,35 @@ if v.sum():
     Kva = []
     Kve = []
 
+# # PROCESS the phenotype data -- Remove missing phenotype values
+# # Remove all individuals without full phenotypes
+# phenoNum = IN.phenos.shape[1]
+# sys.stderr.write("%d number of phenotypes read\n" % phenoNum)
+# out = open(outFile, 'w')
+# X0_origin = X0
+# K_origin = K
+# if options.kfile2:
+#     K2_origin = K2
+# for i in range(phenoNum):
+#     X0 = X0_origin
+#     K = K_origin
+#     if options.kfile2:
+#         K2_origin = K2
+#     Y = IN.phenos[:, i]
+#     v = np.isnan(Y)
+#     keep = True - v
+#     if v.sum():
+#         if options.verbose:
+#             sys.stderr.write("Cleaning the phenotype vector by removing %d individuals...\n" % (v.sum()))
+#         Y = Y[keep]
+#         X0 = X0[keep, :]
+#         K = K[keep, :][:, keep]
+#         if options.kfile2:
+#             K2 = K2[keep, :][:, keep]
+#         Kva = []
+#         Kve = []
+
+
 # Only load the decomposition if we did not remove individuals.
 # Otherwise it would not be correct and we would have to compute it again.
 if not v.sum() and options.eigenfile:
@@ -307,15 +334,17 @@ else:
 # Preprocess the data if a GxE
 if options.runGxE:
     print 'Converting data to GxE form...'
-    assert X0.shape[1] == 2
     covariate_exposure = X0[:, -1]
     snp = np.array([x for x, ignore_id in IN])
-    # print snp.shape
-    # import sys
-    # sys.exit()
-
+    import matplotlib
+    matplotlib.use('agg')
+    import matplotlib.pyplot as plt
+    plt.figure(figsize=(100, 80))
+    import seaborn as sns
+    sns.heatmap(K)
+    plt.savefig('K_before.png')
     exposure_levels = set(covariate_exposure)
-    assert len(exposure_levels) == 2  # Co
+    assert len(exposure_levels) == 2  # We only allow binary covaritates.
     sorted_snps = []
     sorted_Ks = []
     sorted_exposures = []
@@ -326,12 +355,10 @@ if options.runGxE:
         # if we ever want to print it out as well.
         mask = covariate_exposure == level
         same_covariate_snp = snp[mask]
-        K_block = lmm.calculateKinship(same_covariate_snp)
+        K_block = K[:, mask][mask, :]
 
         sorted_Ks.append(K_block)
-        # print mask
         unsort_mask.append(np.arange(len(mask))[mask])
-        # print unsort_mask
 
     unsort_mask = np.concatenate(unsort_mask)
     unsort_mask = np.argsort(unsort_mask)
@@ -343,17 +370,19 @@ if options.runGxE:
     # a block-diagonal structure.
     K = K_GxE[:, unsort_mask]
     K = K[unsort_mask, :]
-    # print K
-    print K.shape
+    plt.figure(figsize=(100, 80))
+    sns.heatmap(K)
+    plt.savefig('K_after.png')
     Kva, Kve = linalg.eigh(K)
 
-    ## Check that the kinship matrix has zeroes where covariate exposure is not the same
+    # Check that the kinship matrix has zeroes where covariate exposure is not the same
     for i in range(len(covariate_exposure)):
         for j in range(i, len(covariate_exposure)):
             if covariate_exposure[i] != covariate_exposure[j]:
                 assert K[i, j] == 0
     covariate_exposure = covariate_exposure.reshape(covariate_exposure.shape[0], 1)
 
+print('Beginning Association Tests...')
 # CREATE LMM object for association
 n = K.shape[0]
 if not options.kfile2:
