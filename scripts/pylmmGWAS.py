@@ -167,7 +167,7 @@ if options.afile:
 
         # print len(annotation_dict.keys())
 
-outFile = args[0]
+outFilename = args[0]
 
 if not options.tfile and not options.bfile and not options.emmaFile:
     #if not options.pfile and not options.tfile and not options.file:
@@ -271,219 +271,202 @@ if options.kfile2:
         K2 = np.fromfile(open(options.kfile2, 'r'), sep=" ")
     K2.resize((len(IN.indivs), len(IN.indivs)))
     end = time.time()
-    if options.verbose: sys.stderr.write(
-        "Read the %d x %d second kinship matrix in %0.3fs \n" % (K2.shape[0], K2.shape[1], end - begin))
+    if options.verbose:
+        sys.stderr.write("Read the %d x %d second kinship matrix in %0.3fs \n" % (K2.shape[0], K2.shape[1], end - begin))
 
 # PROCESS the phenotype data -- Remove missing phenotype values
-# Keep will now index into the "full" data to select what we keep (either everything or a subset of non missing data
-Y = IN.phenos[:, options.pheno]
-v = np.isnan(Y)
-keep = True - v
-if v.sum():
-    if options.verbose:
-        sys.stderr.write("Cleaning the phenotype vector by removing %d individuals...\n" % (v.sum()))
-    Y = Y[keep]
-    X0 = X0[keep, :]
-    K = K[keep, :][:, keep]
+# Remove all individuals without full phenotypes
+phenoNum = IN.phenos.shape[1]
+sys.stderr.write("%d number of phenotypes read\n" % phenoNum)
+X0_origin = X0
+K_origin = K
+if options.kfile2:
+    K2_origin = K2
+for i in range(phenoNum):
+    X0 = X0_origin
+    K = K_origin
     if options.kfile2:
-        K2 = K2[keep, :][:, keep]
-    Kva = []
-    Kve = []
-
-# # PROCESS the phenotype data -- Remove missing phenotype values
-# # Remove all individuals without full phenotypes
-# phenoNum = IN.phenos.shape[1]
-# sys.stderr.write("%d number of phenotypes read\n" % phenoNum)
-# out = open(outFile, 'w')
-# X0_origin = X0
-# K_origin = K
-# if options.kfile2:
-#     K2_origin = K2
-# for i in range(phenoNum):
-#     X0 = X0_origin
-#     K = K_origin
-#     if options.kfile2:
-#         K2_origin = K2
-#     Y = IN.phenos[:, i]
-#     v = np.isnan(Y)
-#     keep = True - v
-#     if v.sum():
-#         if options.verbose:
-#             sys.stderr.write("Cleaning the phenotype vector by removing %d individuals...\n" % (v.sum()))
-#         Y = Y[keep]
-#         X0 = X0[keep, :]
-#         K = K[keep, :][:, keep]
-#         if options.kfile2:
-#             K2 = K2[keep, :][:, keep]
-#         Kva = []
-#         Kve = []
-
-
-# Only load the decomposition if we did not remove individuals.
-# Otherwise it would not be correct and we would have to compute it again.
-if not v.sum() and options.eigenfile:
-    if options.verbose:
-        sys.stderr.write("Loading pre-computed eigendecomposition...\n")
-    Kva = np.load(options.eigenfile + ".Kva")
-    Kve = np.load(options.eigenfile + ".Kve")
-else:
-    Kva = []
-    Kve = []
-
-
-# Preprocess the data if a GxE
-if options.runGxE:
-    print 'Converting data to GxE form...'
-    covariate_exposure = X0[:, -1]
-    snp = np.array([x for x, ignore_id in IN])
-    # import matplotlib
-    # matplotlib.use('agg')
-    # import matplotlib.pyplot as plt
-    # plt.figure(figsize=(100, 80))
-    # import seaborn as sns
-    # sns.heatmap(K)
-    # plt.savefig('K_before.png')
-    exposure_levels = set(covariate_exposure)
-    assert len(exposure_levels) == 2  # We only allow binary covaritates.
-    sorted_snps = []
-    sorted_Ks = []
-    sorted_exposures = []
-    unsort_mask = []
-    for level in exposure_levels:
-        # We need to calculate the kinship separately for each value of
-        # the exposure. Sorting the data will make it "look" nicer
-        # if we ever want to print it out as well.
-        mask = covariate_exposure == level
-        same_covariate_snp = snp[mask]
-        K_block = K[:, mask][mask, :]
-
-        sorted_Ks.append(K_block)
-        unsort_mask.append(np.arange(len(mask))[mask])
-
-    unsort_mask = np.concatenate(unsort_mask)
-    unsort_mask = np.argsort(unsort_mask)
-    # print unsort_mask
-    K_GxE = linalg.block_diag(*sorted_Ks)
-    # print K_GxE
-    # Kinship is 0 between individuals with different
-    # levels for their exposures, so the matrix has
-    # a block-diagonal structure.
-    K = K_GxE[:, unsort_mask]
-    K = K[unsort_mask, :]
-    # plt.figure(figsize=(100, 80))
-    # sns.heatmap(K)
-    # plt.savefig('K_after.png')
-    Kva, Kve = linalg.eigh(K)
-
-    # Check that the kinship matrix has zeroes where covariate exposure is not the same
-    for i in range(len(covariate_exposure)):
-        for j in range(i, len(covariate_exposure)):
-            if covariate_exposure[i] != covariate_exposure[j]:
-                assert K[i, j] == 0
-    covariate_exposure = covariate_exposure.reshape(covariate_exposure.shape[0], 1)
-
-print('Beginning Association Tests...')
-# CREATE LMM object for association
-n = K.shape[0]
-if not options.kfile2:
-    L = lmm.LMM(Y, K, Kva, Kve, X0, verbose=options.verbose)
-else:
-    L = lmm.LMM_withK2(Y, K, Kva, Kve, X0, verbose=options.verbose, K2=K2)
-
-# Fit the null model -- if refit is true we will refit for each SNP, so no reason to run here
-if not options.refit:
-    if options.verbose:
-        sys.stderr.write("Computing fit for null model\n")
-    L.fit()
-    if options.verbose and not options.kfile2:
-        sys.stderr.write("\t heritability=%0.3f, sigma=%0.3f\n" % (L.optH, L.optSigma))
-    if options.verbose and options.kfile2:
-        sys.stderr.write("\t heritability=%0.3f, sigma=%0.3f, w=%0.3f\n" % (L.optH, L.optSigma, L.optW))
-
-
-# Buffers for p-values and t-stats
-PS = []
-TS = []
-count = 0
-out = open(outFile, 'w')
-
-if options.afile:
-    printOutHeadAnnotated()
-else:
-    printOutHead()
-
-for snp, id in IN:
-    count += 1
-    if options.verbose and count % 1000 == 0:
-        sys.stderr.write("At SNP %d\n" % count)
-
-    x = snp[keep].reshape((n, 1))
+        K2_origin = K2
+    Y = IN.phenos[:, i]
+    v = np.isnan(Y)
+    keep = True - v
+    if v.sum():
+        if options.verbose:
+            sys.stderr.write("Cleaning the phenotype vector by removing %d individuals...\n" % (v.sum()))
+        Y = Y[keep]
+        X0 = X0[keep, :]
+        K = K[keep, :][:, keep]
+        if options.kfile2:
+            K2 = K2[keep, :][:, keep]
+        Kva = []
+        Kve = []
+    # Only load the decomposition if we did not remove individuals.
+    # Otherwise it would not be correct and we would have to compute it again.
+    if not v.sum() and options.eigenfile:
+        if options.verbose:
+            sys.stderr.write("Loading pre-computed eigendecomposition...\n")
+        Kva = np.load(options.eigenfile + ".Kva")
+        Kve = np.load(options.eigenfile + ".Kve")
+    else:
+        Kva = []
+        Kve = []
+    # Preprocess the data if a GxE
     if options.runGxE:
-        snp_copy = x.copy()
-        this_covariate_exposure = covariate_exposure[keep]
-        # print x
-        # print this_covariate_exposure
-        # print x.shape
-        # print this_covariate_exposure.shape
-        x = x * this_covariate_exposure
-        # print x
-    v = np.isnan(x).reshape((-1,))
-    nmiss = n - v.sum()
+        print 'Converting data to GxE form...'
+        covariate_exposure = X0[:, -1]
+        snp = np.array([x for x, ignore_id in IN])
+        # import matplotlib
+        # matplotlib.use('agg')
+        # import matplotlib.pyplot as plt
+        # plt.figure(figsize=(100, 80))
+        # import seaborn as sns
+        # sns.heatmap(K)
+        # plt.savefig('K_before.png')
+        exposure_levels = set(covariate_exposure)
+        assert len(exposure_levels) == 2  # We only allow binary covaritates.
+        sorted_snps = []
+        sorted_Ks = []
+        sorted_exposures = []
+        unsort_mask = []
+        for level in exposure_levels:
+            # We need to calculate the kinship separately for each value of
+            # the exposure. Sorting the data will make it "look" nicer
+            # if we ever want to print it out as well.
+            mask = covariate_exposure == level
+            same_covariate_snp = snp[mask]
+            K_block = K[:, mask][mask, :]
 
-    # Check SNPs for missing values
-    if v.sum():  # v.sum() is the number of missing values
-        keeps = True - v
-        xs = x[keeps, :]
-        if keeps.sum() <= 1 or xs.var() <= 1e-6:
-            PS.append(np.nan)
-            TS.append(np.nan)
-            if options.afile:
-                outputResultAnnotated(id, np.nan, np.nan, np.nan, np.nan, np.nan, annotation_dict=annotation_dict)
-            else:
-                outputResult(id, np.nan, np.nan, np.nan, np.nan)
-            continue
+            sorted_Ks.append(K_block)
+            unsort_mask.append(np.arange(len(mask))[mask])
 
-        # Its ok to center the genotype -  I used options.normalizeGenotype to
-        # force the removal of missing genotypes as opposed to replacing them with MAF.
-        if not options.normalizeGenotype:
-            xs = (xs - xs.mean()) / np.sqrt(xs.var())
-        Ys = Y[keeps]
-        X0s = X0[keeps, :]
-        if options.runGxE:
-            snp_copys = snp_copy[keeps]
-            X0s = np.hstack([X0s, snp_copys])
-        Ks = K[keeps, :][:, keeps]
+        unsort_mask = np.concatenate(unsort_mask)
+        unsort_mask = np.argsort(unsort_mask)
+        # print unsort_mask
+        K_GxE = linalg.block_diag(*sorted_Ks)
+        # print K_GxE
+        # Kinship is 0 between individuals with different
+        # levels for their exposures, so the matrix has
+        # a block-diagonal structure.
+        K = K_GxE[:, unsort_mask]
+        K = K[unsort_mask, :]
+        # plt.figure(figsize=(100, 80))
+        # sns.heatmap(K)
+        # plt.savefig('K_after.png')
+        Kva, Kve = linalg.eigh(K)
 
-        if options.kfile2:
-            K2s = K2[keeps, :][:, keeps]
-        if options.kfile2:
-            Ls = lmm.LMM_withK2(Ys, Ks, X0=X0s, verbose=options.verbose, K2=K2s)
-        else:
-            Ls = lmm.LMM(Ys, Ks, X0=X0s, verbose=options.verbose)
-        if options.refit:
-            Ls.fit(X=xs, REML=options.REML)
-        else:
-            # try:
-            Ls.fit(REML=options.REML)
-            # except: pdb.set_trace()
-        ts, ps, beta, betaVar = Ls.association(xs, REML=options.REML, returnBeta=True)
+        # Check that the kinship matrix has zeroes where covariate exposure is not the same
+        for m in range(len(covariate_exposure)):
+            for n in range(m, len(covariate_exposure)):
+                if covariate_exposure[m] != covariate_exposure[n]:
+                    assert K[m, n] == 0
+        covariate_exposure = covariate_exposure.reshape(covariate_exposure.shape[0], 1)
+
+    print('Beginning Association Tests...')
+    # CREATE LMM object for association
+    n = K.shape[0]
+    if not options.kfile2:
+        L = lmm.LMM(Y, K, Kva, Kve, X0, verbose=options.verbose)
     else:
-        if x.var() == 0:
-            PS.append(np.nan)
-            TS.append(np.nan)
-            if options.afile:
-                outputResultAnnotated(id, np.nan, np.nan, np.nan, np.nan, np.nan, annotation_dict=annotation_dict)
-            else:
-                outputResult(id, np.nan, np.nan, np.nan, np.nan)
-            continue
+        L = lmm.LMM_withK2(Y, K, Kva, Kve, X0, verbose=options.verbose, K2=K2)
 
-        if options.refit:
-            L.fit(X=x, REML=options.REML)
-        ts, ps, beta, betaVar = L.association(x, REML=options.REML, returnBeta=True)
+    # Fit the null model -- if refit is true we will refit for each SNP, so no reason to run here
+    if not options.refit:
+        if options.verbose:
+            sys.stderr.write("Computing fit for null model\n")
+        L.fit()
+        if options.verbose and not options.kfile2:
+            sys.stderr.write("\t heritability=%0.3f, sigma=%0.3f\n" % (L.optH, L.optSigma))
+        if options.verbose and options.kfile2:
+            sys.stderr.write("\t heritability=%0.3f, sigma=%0.3f, w=%0.3f\n" % (L.optH, L.optSigma, L.optW))
 
-    if options.afile:
-        outputResultAnnotated(id, beta, np.sqrt(betaVar).sum(), ts, ps, nmiss, annotation_dict=annotation_dict)
+    if phenoNum == 1:
+        full_outFilename = outFilename
     else:
-        outputResult(id, beta, np.sqrt(betaVar).sum(), ts, ps)
-    PS.append(ps)
-    TS.append(ts)
+        start, end = os.path.splitext(outFilename)
+        full_outFilename = start + '_{}'.format(i) + end
+    with open(full_outFilename, 'w') as out:
+        # Buffers for p-values and t-stats
+        PS = []
+        TS = []
+        count = 0
+
+        if options.afile:
+            printOutHeadAnnotated()
+        else:
+            printOutHead()
+
+        for snp, id in IN:
+            count += 1
+            if options.verbose and count % 1000 == 0:
+                sys.stderr.write("At SNP %d\n" % count)
+
+            x = snp[keep].reshape((n, 1))
+            if options.runGxE:
+                snp_copy = x.copy()
+                this_covariate_exposure = covariate_exposure[keep]
+                # print x
+                # print this_covariate_exposure
+                # print x.shape
+                # print this_covariate_exposure.shape
+                x = x * this_covariate_exposure
+                # print x
+            v = np.isnan(x).reshape((-1,))
+            nmiss = n - v.sum()
+
+            # Check SNPs for missing values
+            if v.sum():  # v.sum() is the number of missing values
+                keeps = True - v
+                xs = x[keeps, :]
+                if keeps.sum() <= 1 or xs.var() <= 1e-6:
+                    PS.append(np.nan)
+                    TS.append(np.nan)
+                    if options.afile:
+                        outputResultAnnotated(id, np.nan, np.nan, np.nan, np.nan, np.nan, annotation_dict=annotation_dict)
+                    else:
+                        outputResult(id, np.nan, np.nan, np.nan, np.nan)
+                    continue
+
+                # Its ok to center the genotype -  I used options.normalizeGenotype to
+                # force the removal of missing genotypes as opposed to replacing them with MAF.
+                if not options.normalizeGenotype:
+                    xs = (xs - xs.mean()) / np.sqrt(xs.var())
+                Ys = Y[keeps]
+                X0s = X0[keeps, :]
+                if options.runGxE:
+                    snp_copys = snp_copy[keeps]
+                    X0s = np.hstack([X0s, snp_copys])
+                Ks = K[keeps, :][:, keeps]
+
+                if options.kfile2:
+                    K2s = K2[keeps, :][:, keeps]
+                if options.kfile2:
+                    Ls = lmm.LMM_withK2(Ys, Ks, X0=X0s, verbose=options.verbose, K2=K2s)
+                else:
+                    Ls = lmm.LMM(Ys, Ks, X0=X0s, verbose=options.verbose)
+                if options.refit:
+                    Ls.fit(X=xs, REML=options.REML)
+                else:
+                    # try:
+                    Ls.fit(REML=options.REML)
+                    # except: pdb.set_trace()
+                ts, ps, beta, betaVar = Ls.association(xs, REML=options.REML, returnBeta=True)
+            else:
+                if x.var() == 0:
+                    PS.append(np.nan)
+                    TS.append(np.nan)
+                    if options.afile:
+                        outputResultAnnotated(id, np.nan, np.nan, np.nan, np.nan, np.nan, annotation_dict=annotation_dict)
+                    else:
+                        outputResult(id, np.nan, np.nan, np.nan, np.nan)
+                    continue
+
+                if options.refit:
+                    L.fit(X=x, REML=options.REML)
+                ts, ps, beta, betaVar = L.association(x, REML=options.REML, returnBeta=True)
+
+            if options.afile:
+                outputResultAnnotated(id, beta, np.sqrt(betaVar).sum(), ts, ps, nmiss, annotation_dict=annotation_dict)
+            else:
+                outputResult(id, beta, np.sqrt(betaVar).sum(), ts, ps)
+            PS.append(ps)
+            TS.append(ts)

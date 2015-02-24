@@ -103,7 +103,7 @@ def GWAS(Y, X, K, Kva=[], Kve=[], X0=None, REML=True, refit=False):
     n = X.shape[0]
     m = X.shape[1]
 
-    if X0 == None:
+    if X0 is None:
         X0 = np.ones((n, 1))
 
     # Remove missing values in Y and adjust associated parameters
@@ -122,7 +122,8 @@ def GWAS(Y, X, K, Kva=[], Kve=[], X0=None, REML=True, refit=False):
         return np.ones(m) * np.nan, np.ones(m) * np.nan
 
     L = LMM(Y, K, Kva, Kve, X0)
-    if not refit: L.fit()
+    if not refit:
+        L.fit()
 
     PS = []
     TS = []
@@ -188,14 +189,15 @@ class LMM:
         X0 is an optional covariate matrix of size n x q, where there are q covariates.
         When this parameter is not provided, the constructor will set X0 to an n x 1 matrix of all ones to represent a mean effect.
         """
-        if X0 == None:
+        if X0 is None:
             X0 = np.ones(len(Y)).reshape(len(Y), 1)
         self.verbose = verbose
 
         x = True - np.isnan(Y)
         x = x.reshape(-1, )
         if not x.sum() == len(Y):
-            if self.verbose: sys.stderr.write("Removing %d missing values from Y\n" % ((True - x).sum()))
+            if self.verbose:
+                sys.stderr.write("Removing %d missing values from Y\n" % ((True - x).sum()))
             Y = Y[x]
             K = K[x, :][:, x]
             X0 = X0[x, :]
