@@ -383,7 +383,7 @@ for i in range(phenoNum):
         full_outFilename = outFilename
     else:
         start, end = os.path.splitext(outFilename)
-        full_outFilename = start + '_{}'.format(i) + end
+        full_outFilename = start + '_{0}'.format(i) + end
     with open(full_outFilename, 'w') as out:
         # Buffers for p-values and t-stats
         PS = []
