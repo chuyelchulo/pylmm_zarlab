@@ -249,10 +249,19 @@ class plink:
         f = open(phenoFile, 'r')
         keys = []
         P = []
+        line_count = 0
         for line in f:
             v = line.strip().split()
             keys.append((v[0], v[1]))
-            P.append([(x.strip() == 'NA' or x.strip() == '-9') and np.nan or float(x) for x in v[2:]])
+
+            line_count += 1
+            if line_count == 1:  # Allow for a single line of string headers
+                try:
+                    P.append([(x.strip() == 'NA' or x.strip() == '-9') and np.nan or float(x) for x in v[2:]])
+                except ValueError:
+                    continue
+            else:
+                P.append([(x.strip() == 'NA' or x.strip() == '-9') and np.nan or float(x) for x in v[2:]])
         f.close()
         P = np.array(P)
 
