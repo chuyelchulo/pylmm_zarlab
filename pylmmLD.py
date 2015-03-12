@@ -306,7 +306,7 @@ elif options.imputeStats:
     else:
         vector1 = (vector1 - m1) / s1
     if s2 == 0:
-        vector2 = vecgtor2 - m2
+        vector2 = vector2 - m2
     else:
         vector2 = (vector2 - m2) / s2
     result = abs(dot(vector1, vector2.transpose())) / len(vector1)
