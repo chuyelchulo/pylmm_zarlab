@@ -10,7 +10,7 @@ class test_pylmmGWAS(unittest.TestCase):
         self._bfile = 'data/snps.132k.clean.noX'
         self._kfile = 'data/snps.132k.clean.noX.pylmm.kin'
         self._pfile = 'data/snps.132k.clean.noX.fake.phenos'
-        self._outputFile = 'data/pylmmKinshipTestOutput'
+        self._outputFile = 'data/pylmmGWASTestOutput'
         self._computeSize = "1000"
 
     def tearDown(self):
@@ -22,8 +22,20 @@ class test_pylmmGWAS(unittest.TestCase):
 
         with (open(self._ansGwasFile, 'r')) as ansKey:
             with (open(self._outputFile, 'r')) as ansFile:
-                line1 = ansKey.read().split()
-                line2 = ansFile.read().split()
-                for i in range(len(line1)):
-                    self.assertTrue(line1[i].strip() == line2[i].strip(),
-                        "An entry in the stored GWAS results differs from the entry in the results obtained from this test run.")
+                file1Contents = ansKey.read().split()
+                file2Contents = ansFile.read().split()
+                for i in range(len(file1Contents)):
+                    item1 = file1Contents[i].strip()
+                    item2 = file2Contents[i].strip()
+
+                    #for numeric values, some small variations may occur in the data between runs of GWAS, so inexact
+                    #matching is allowed
+                    try:
+                        item1 = float(item1)
+                        item2 = float(item2)
+                        self.assertTrue(abs(item1 - item2) < 1e-6,
+                            "An entry in the stored GWAS results differs from the entry in the results obtained from this test run.")
+                    #for strings, an exact match is made
+                    except ValueError:
+                        self.assertTrue(item1 == item2,
+                            "An entry in the stored GWAS results differs from the entry in the results obtained from this test run.")
