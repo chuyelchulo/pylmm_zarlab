@@ -1,4 +1,5 @@
 import unittest
+import math
 import sys
 import numpy as np
 from scipy import linalg
@@ -20,10 +21,10 @@ class test_lmm(unittest.TestCase):
         #    os.remove(self._outputFile)
 
     def test_calculateKinship(self):
-        snps = np.load('data/hmdp.liver.snps.npdump').T
+        snps = np.load(self._liverSNPFile).T
         K = lmm.calculateKinship(snps)
 
-        ansK = np.load('data/hmdp.liver.K.npdump')
+        ansK = np.load(self._liverKinshipMatrix)
 
         self.assertTrue(np.allclose(K, ansK), "The kinship matrix generated during this test run " +
                         "did not match the kinship matrix stored in " + self._liverKinshipMatrix)
@@ -35,14 +36,15 @@ class test_lmm(unittest.TestCase):
         K = np.load(self._liverKinshipMatrix)
 
         snps = np.load(self._liver1000SNPFile).T
-
-        # Genome-wide scan over the 1000 SNPs.
-        # This call will use REML (REML = False means use ML).
-        # It will also refit the variance components for each SNP.
-        # Setting refit = False will cause the program to fit the model once
-        # and hold those variance component estimates for each SNP.
+        vars = np.nanvar(snps, axis=0) #variances across the rows ignoring NaN, used to check which SNPs were not polymorphic across the given individuals
 
         TS,PS = lmm.GWAS(Y,snps,K,REML=True,refit=True)
+
+        #SNPs that are not polymorphic (in the given individuals being tested) will have variance 0, this check ensures
+        #that only these SNPs have a return value of NaN
+        for i in range(len(PS)):
+           self.assertTrue( not math.isnan(PS[i]) or vars[i] == 0, "NaN found in results corresponding to polymorphic SNP")
+
         results = np.array([TS,PS])
         ansKey = np.load(self._liverTestFile)
 

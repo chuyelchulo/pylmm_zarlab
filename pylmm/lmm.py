@@ -66,8 +66,11 @@ def calculateKinship(W, center=False):
     m = W.shape[1]
     keep = []
     for i in range(m):
+        #calculate the mean of the values in this column that are not NaN
         mn = W[True - np.isnan(W[:, i]), i].mean()
+        #replace all NaN values in this column with the mean
         W[np.isnan(W[:, i]), i] = mn
+
         vr = W[:, i].var()
         if vr == 0:
             continue
@@ -75,6 +78,7 @@ def calculateKinship(W, center=False):
         keep.append(i)
         W[:, i] = (W[:, i] - mn) / np.sqrt(vr)
 
+    #keep contains all columns (SNPs) with non-zero variance, so this line removes all SNPs with zero variance prior to computing the kinship matrix
     W = W[:, keep]
     K = matrixMult(W, W.T) * 1.0 / float(m)
     if center:
