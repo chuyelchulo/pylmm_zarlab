@@ -55,6 +55,71 @@ def matrixMult(A, B):
 
     return linalg.fblas.dgemm(alpha=1., a=AA, b=BB, trans_a=transA, trans_b=transB)
 
+def calculateKinshipIncremental(IN, numSNPs=None, computeSize=1000, center=False, missing="MAF"):
+    """
+    Uses lmm.calculateKinship to compute kinship matrices on input.plink objects using incremental
+    version that reduces memory usage.
+    :param IN: input.plink object initialized using Plink or EMMA formatted file
+    :param numSNPs: The number of SNPs in the input.plink object, (Only needed if using EMMA file for input)
+    :param computeSize: The maximum number of SNPs to read into memory at once (default 1000).
+    :param center:
+    :return:
+    """
+    n = len(IN.indivs)
+    m = computeSize
+    W = np.ones((n,m)) * np.nan
+
+    IN.getSNPIterator()
+
+    # Annoying hack to get around the fact that it is expensive to determine the number of SNPs in an emma file
+    if numSNPs and IN.numSNPs != -1:
+        print "numSNPs param not necessary when using plink files for input. Using numSNPs=" + str(IN.numSNPs)
+    elif not numSNPs and IN.numSNPs < 0:
+        raise Exception("numSNPs param is required when using EMMA files for input.")
+    elif IN.numSNPs == -1:
+        IN.numSNPs = numSNPs
+
+    sys.stderr.write("Calculating kinship matrix for %d individuals\n" % n)
+    sys.stderr.write("Total number of SNPs: %d\n" % IN.numSNPs)
+
+    i = 0
+    K = None
+    while i < IN.numSNPs:
+        j = 0
+        while j < m and i < IN.numSNPs:
+            snp,id = IN.next()
+
+            if missing == "MAF":
+                #calculate the mean of the values in this column that are not NaN
+                mn = snp[True - np.isnan(snp)].mean()
+                #replace all NaN values in this column with the mean
+                snp[np.isnan(snp)] = mn
+
+            vr = snp.var()
+            if vr == 0:
+                i += 1
+                continue
+
+            W[:,j] = snp
+
+            i += 1
+            j += 1
+
+        if j < m:
+            W = W[:,range(0,j)]
+
+        sys.stderr.write("Processing first %d SNPs\n" % i)
+
+        if K is None:
+            K = matrixMult(W, W.T)
+        else:
+            K = K + matrixMult(W, W.T)
+
+    K = K / float(IN.numSNPs)
+    return K
+
+def calculateEigendecomposition(K):
+        return linalg.eigh(K)
 
 def calculateKinship(W, center=False):
     """
@@ -87,7 +152,6 @@ def calculateKinship(W, center=False):
         K_n = (n - 1) * K / S
         return K_n
     return K
-
 
 def GWAS(Y, X, K, Kva=[], Kve=[], X0=None, REML=True, refit=False):
     """

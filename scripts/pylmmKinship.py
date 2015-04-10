@@ -68,8 +68,7 @@ import sys
 import os
 import numpy as np
 from scipy import linalg
-from pylmm.lmm import calculateKinship
-from pylmm import input
+from pylmm import input, lmm
 
 if not options.tfile and not options.bfile and not options.emmaFile: 
    parser.error("You must provide at least one PLINK input file base (--tfile or --bfile) or an emma formatted file (--emmaSNP).")
@@ -83,49 +82,14 @@ elif options.emmaFile:
    IN = input.plink(options.emmaFile,type='emma')
 else: parser.error("You must provide at least one PLINK input file base (--tfile or --bfile) or an emma formatted file (--emmaSNP).")
 
-n = len(IN.indivs)
-m = options.computeSize
-W = np.ones((n,m)) * np.nan
+K = lmm.calculateKinshipIncremental(IN, numSNPs=options.numSNPs, computeSize=options.computeSize, center=False, missing="MAF")
 
-IN.getSNPIterator()
-# Annoying hack to get around the fact that it is expensive to determine the number of SNPs in an emma file
-if options.emmaFile: IN.numSNPs = options.numSNPs
-i = 0
-K = None
-while i < IN.numSNPs:
-   j = 0
-   while j < options.computeSize and i < IN.numSNPs:
-      snp,id = IN.next()
-      if snp.var() == 0:
-	 i += 1
-	 continue
-      W[:,j] = snp
-
-      i += 1
-      j += 1
-   if j < options.computeSize: W = W[:,range(0,j)] 
-
-   if options.verbose: sys.stderr.write("Processing first %d SNPs\n" % i)
-   if K is None:
-      try: 
-	 K = linalg.fblas.dgemm(alpha=1.,a=W.T,b=W.T,trans_a=True,trans_b=False) # calculateKinship(W) * j
-      except AttributeError: K = np.dot(W,W.T) 
-   else:
-      try: 
-	 K_j = linalg.fblas.dgemm(alpha=1.,a=W.T,b=W.T,trans_a=True,trans_b=False) # calculateKinship(W) * j
-      except AttributeError: K_j = np.dot(W,W.T)
-      K = K + K_j
-
-K = K / float(IN.numSNPs)
 if options.verbose: sys.stderr.write("Saving Kinship file to %s\n" % outFile)
 np.savetxt(outFile,K)
 
 if options.saveEig:
    if options.verbose: sys.stderr.write("Obtaining Eigendecomposition\n")
-   Kva,Kve = linalg.eigh(K)
+   Kva,Kve = lmm.calculateEigendecomposition(K)
    if options.verbose: sys.stderr.write("Saving eigendecomposition to %s.[kva | kve]\n" % outFile)
    np.savetxt(outFile+".kva",Kva)
    np.savetxt(outFile+".kve",Kve)
-      
-
-
