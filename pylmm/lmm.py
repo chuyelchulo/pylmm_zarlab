@@ -234,6 +234,195 @@ def GWAS(Y, X, K, Kva=[], Kve=[], X0=None, REML=True, refit=False):
 
     return TS, PS
 
+def GWAS2(Y, IN, K, K2=None, Kva=[], Kve=[], X0=None, REML=True, refit=False, runGxE=False, verbose=False, center=False):
+    """
+        Performs a basic GWAS scan using the LMM.  This function
+        uses the LMM module to assess association at each SNP and
+        does some simple cleanup, such as removing missing individuals
+        per SNP and re-computing the eigen-decomp
+        Y - n x 1 phenotype vector
+        IN - input.plink object used to iterate through SNP data
+        K - n x n kinship matrix
+        K2 - n x n kinship matrix
+        Kva,Kve = linalg.eigh(K) - or the eigen vectors and values for K
+        X0 - n x q covariate matrix
+        REML - use restricted maximum likelihood
+        refit - refit the variance component for each SNP
+        center - Original code did this only when the genotype was normalized using the input class
+      """
+
+    n = len(IN.indivs)
+
+    if X0 is None:
+        X0 = np.ones((n, 1))
+
+    # Remove missing values in Y and adjust associated parameters
+    v = np.isnan(Y)
+    keep = True - v
+
+    if v.sum():
+        if verbose:
+            sys.stderr.write("Cleaning the phenotype vector by removing %d individuals...\n" % (v.sum()))
+        keep = keep.reshape((-1,))
+        Y = Y[keep]
+        X0 = X0[keep, :]
+        K = K[keep, :][:, keep]
+        if K2:
+            K2 = K2[keep, :][:, keep]
+        Kva = []
+        Kve = []
+
+    if len(Y) == 0:
+        m = sum(1 for _ in IN)
+        return np.ones(m) * np.nan, np.ones(m) * np.nan
+
+    # Preprocess the data if a GxE
+    if runGxE:
+        if verbose:
+            print 'Converting data to GxE form...'
+        covariate_exposure = X0[:, -1]
+        snp = np.array([x for x, ignore_id in IN])
+        # import matplotlib
+        # matplotlib.use('agg')
+        # import matplotlib.pyplot as plt
+        # plt.figure(figsize=(100, 80))
+        # import seaborn as sns
+        # sns.heatmap(K)
+        # plt.savefig('K_before.png')
+        exposure_levels = set(covariate_exposure)
+        assert len(exposure_levels) == 2  # We only allow binary covaritates.
+        sorted_snps = []
+        sorted_Ks = []
+        sorted_exposures = []
+        unsort_mask = []
+        for level in exposure_levels:
+            # We need to calculate the kinship separately for each value of
+            # the exposure. Sorting the data will make it "look" nicer
+            # if we ever want to print it out as well.
+            mask = covariate_exposure == level
+            same_covariate_snp = snp[mask]
+            K_block = K[:, mask][mask, :]
+
+            sorted_Ks.append(K_block)
+            unsort_mask.append(np.arange(len(mask))[mask])
+
+        unsort_mask = np.concatenate(unsort_mask)
+        unsort_mask = np.argsort(unsort_mask)
+        # print unsort_mask
+        K_GxE = linalg.block_diag(*sorted_Ks)
+        # print K_GxE
+        # Kinship is 0 between individuals with different
+        # levels for their exposures, so the matrix has
+        # a block-diagonal structure.
+        K = K_GxE[:, unsort_mask]
+        K = K[unsort_mask, :]
+        # plt.figure(figsize=(100, 80))
+        # sns.heatmap(K)
+        # plt.savefig('K_after.png')
+        Kva, Kve = linalg.eigh(K)
+
+        # Check that the kinship matrix has zeroes where covariate exposure is not the same
+        for m in range(len(covariate_exposure)):
+            for n in range(m, len(covariate_exposure)):
+                if covariate_exposure[m] != covariate_exposure[n]:
+                    assert K[m, n] == 0
+        covariate_exposure = covariate_exposure.reshape(covariate_exposure.shape[0], 1)
+
+    if verbose:
+        print('Beginning Association Tests...')
+
+    # CREATE LMM object for association
+    n = K.shape[0]
+    if K2:
+        raise Exception("LMM using two kinship matrices has not been implemented yet")
+        #L = LMM_withK2(Y, K, Kva, Kve, X0, verbose=True, K2=K2)
+    else:
+        L = LMM(Y, K, Kva, Kve, X0, verbose=True)
+
+    # Fit the null model -- if refit is true we will refit for each SNP, so no reason to run here
+    if not refit:
+        if verbose:
+            sys.stderr.write("Computing fit for null model\n")
+        L.fit()
+        if verbose and not K2:
+            sys.stderr.write("\t heritability=%0.3f, sigma=%0.3f\n" % (L.optH, L.optSigma))
+        if verbose and K2:
+            sys.stderr.write("\t heritability=%0.3f, sigma=%0.3f, w=%0.3f\n" % (L.optH, L.optSigma, L.optW))
+
+    # Buffers for p-values and t-stats
+    output_list = []
+    PS = []
+    TS = []
+    count = 0
+
+    for snp, id in IN:
+        count += 1
+        if verbose and count % 1000 == 0:
+            sys.stderr.write("At SNP %d\n" % count)
+
+        x = snp[keep].reshape((n, 1))
+        if runGxE:
+            snp_copy = x.copy()
+            this_covariate_exposure = covariate_exposure[keep]
+            # print x
+            # print this_covariate_exposure
+            # print x.shape
+            # print this_covariate_exposure.shape
+            x = x * this_covariate_exposure
+            # print x
+        v = np.isnan(x).reshape((-1,))
+        nmiss = n - v.sum()
+
+        # Check SNPs for missing values
+        if v.sum():  # v.sum() is the number of missing values
+            keeps = True - v
+            xs = x[keeps, :]
+            if keeps.sum() <= 1 or xs.var() <= 1e-6:
+                PS.append(np.nan)
+                TS.append(np.nan)
+                output_list.append([id, np.nan, np.nan, np.nan, np.nan, np.nan])
+                continue
+
+            # Its ok to center the genotype -  I used options.normalizeGenotype to
+            # force the removal of missing genotypes as opposed to replacing them with MAF.
+            if center:
+                xs = (xs - xs.mean()) / np.sqrt(xs.var())
+            Ys = Y[keeps]
+            X0s = X0[keeps, :]
+            if runGxE:
+                snp_copys = snp_copy[keeps]
+                X0s = np.hstack([X0s, snp_copys])
+            Ks = K[keeps, :][:, keeps]
+
+            if K2:
+                K2s = K2[keeps, :][:, keeps]
+            if K2:
+                pass #following code has not been implemented yet
+                #Ls = LMM_withK2(Ys, Ks, X0=X0s, verbose=options.verbose, K2=K2s)
+            else:
+                Ls = LMM(Ys, Ks, X0=X0s, verbose=verbose)
+            if refit:
+                Ls.fit(X=xs, REML=REML)
+            else:
+                # try:
+                Ls.fit(REML=REML)
+                # except: pdb.set_trace()
+            ts, ps, beta, betaVar = Ls.association(xs, REML=REML, returnBeta=True)
+        else:
+            if x.var() == 0:
+                PS.append(np.nan)
+                TS.append(np.nan)
+                output_list.append([id, np.nan, np.nan, np.nan, np.nan, np.nan])
+                continue
+
+            if refit:
+                L.fit(X=x, REML=REML)
+            ts, ps, beta, betaVar = L.association(x, REML=REML, returnBeta=True)
+
+        output_list.append([id, beta, np.sqrt(betaVar).sum(), ts, ps, nmiss])
+        PS.append(ps)
+        TS.append(ts)
+    return TS, PS, output_list
 
 class LMM:
     """

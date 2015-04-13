@@ -23,21 +23,19 @@
 #NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 #SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import pdb
 import time
 import sys
-
+import os
+import numpy as np
+from pylmm import input, lmm
 
 def printOutHead(): out.write("\t".join(["SNP_ID", "BETA", "BETA_SD", "F_STAT", "P_VALUE"]) + "\n")
-
 
 def outputResult(id, beta, betaSD, ts, ps):
     out.write("\t".join([str(x) for x in [id, beta, betaSD, ts, ps]]) + "\n")
 
-
 def printOutHeadAnnotated(): out.write(
     "\t".join(["SNP_ID", "A1", "NMISS", "BETA", "BETA_SD", "F_STAT", "P_VALUE"]) + "\n")
-
 
 def outputResultAnnotated(id, beta, betaSD, ts, ps, nmiss, annotation_dict):
     try:
@@ -46,104 +44,10 @@ def outputResultAnnotated(id, beta, betaSD, ts, ps, nmiss, annotation_dict):
         a1 = 'N/A'
     out.write("\t".join([str(x) for x in [id, a1, nmiss, beta, betaSD, ts, ps]]) + "\n")
 
+parser = input.get_gwas_parser()
+options = parser.parse_args()
 
-from optparse import OptionParser, OptionGroup
-
-usage = """usage: %prog [options] --kfile kinshipFile --[tfile | bfile] plinkFileBase outfileBase --afile annotationfile --GxE
-
-This program provides basic genome-wide association (GWAS) functionality.
-You provide a phenotype and genotype file as well as a pre-computed (use pylmmKinship.py)
-kinship matrix and the program outputs a result file with information about each SNP, including the association p-value.
-The input file are all standard plink formatted with the first two columns specifying the individual and family ID.
-For the phenotype file, we accept either NA or -9 to denote missing values.
-
-Basic usage:
-
-      python pylmmGWAS.py -v --bfile plinkFile --kfile preComputedKinship.kin --phenofile plinkFormattedPhenotypeFile resultFile
-
-	    """
-
-parser = OptionParser(usage=usage)
-
-basicGroup = OptionGroup(parser, "Basic Options")
-advancedGroup = OptionGroup(parser, "Advanced Options")
-experimentalGroup = OptionGroup(parser, "Experimental Options")
-annotationGroup = OptionGroup(parser, "Annotation Options")
-GxEGroup = OptionGroup(parser, "GxE Options")
-
-#basicGroup.add_option("--pfile", dest="pfile",
-#                  help="The base for a PLINK ped file")
-basicGroup.add_option("--tfile", dest="tfile",
-                      help="The base for a PLINK tped file")
-basicGroup.add_option("--bfile", dest="bfile",
-                      help="The base for a PLINK binary bed file")
-basicGroup.add_option("--phenofile", dest="phenoFile", default=None,
-                      help="Without this argument the program will look for a file with .pheno that has the plinkFileBase root.  If you want to specify an alternative phenotype file, then use this argument.  This file should be in plink format. ")
-
-# EMMA Options
-basicGroup.add_option("--emmaSNP", dest="emmaFile", default=None,
-                      help="For backwards compatibility with emma, we allow for \"EMMA\" file formats.  This is just a text file with individuals on the columns and snps on the rows.")
-basicGroup.add_option("--emmaPHENO", dest="emmaPheno", default=None,
-                      help="For backwards compatibility with emma, we allow for \"EMMA\" file formats.  This is just a text file with each phenotype as one row.")
-basicGroup.add_option("--emmaCOV", dest="emmaCov", default=None,
-                      help="For backwards compatibility with emma, we allow for \"EMMA\" file formats.  This is just a text file with each covariate as one row.")
-
-basicGroup.add_option("--kfile", dest="kfile",
-                      help="The location of a kinship file.  This is an nxn plain text file and can be computed with the pylmmKinship program.")
-basicGroup.add_option("--covfile", dest="covfile",
-                      help="The location of a covariate file file.  This is a plink formatted covariate file.")
-basicGroup.add_option("-p", type="int", dest="pheno", help="The phenotype index to be used in association.", default=0)
-
-advancedGroup.add_option("--removeMissingGenotypes",
-                         action="store_false", dest="normalizeGenotype", default=True,
-                         help="By default the program replaces missing genotypes with the minor allele frequency.  This option overrides that behavior making the program remove missing individuals.  NOTE: This can increase running time due to the need to recompute the eigendecomposition for each SNP with missing values.")
-advancedGroup.add_option("--refit",
-                         action="store_true", dest="refit", default=False,
-                         help="Refit the variance components at each SNP (default is to lock in the variance components under the null).")
-
-advancedGroup.add_option("--REML",
-                         action="store_true", dest="REML", default=False,
-                         help="Use restricted maximum-likelihood (REML) (default is maximum-likelihood).")
-#advancedGroup.add_option("-e", "--efile", dest="saveEig", help="Save eigendecomposition to this file.")
-advancedGroup.add_option("--eigen", dest="eigenfile",
-                         help="The location of the precomputed eigendecomposition for the kinship file.  These can be computed with pylmmKinship.py.")
-advancedGroup.add_option("--noMean", dest="noMean", default=False, action="store_true",
-                         help="This option only applies when --cofile is used.  When covfile is provided, the program will automatically add a global mean covariate to the model unless this option is specified.")
-
-advancedGroup.add_option("-v", "--verbose",
-                         action="store_true", dest="verbose", default=False,
-                         help="Print extra info")
-
-# Experimental Group Options
-experimentalGroup.add_option("--kfile2", dest="kfile2",
-                             help="The location of a second kinship file.  This file has the same format as the first kinship.  This might be used if you want to correct for another form of confounding.")
-
-# Annotation Group Options
-annotationGroup.add_option("--afile", dest="afile", default=False,
-                           help="The location of an annotation file.  This file is (as yet) formatted in two columns. The first column has IDs and the second has the nucleotides you want printed.")
-
-# GxE Group
-GxEGroup.add_option("--gxe", "--GxE",
-                    action="store_true", dest="runGxE", default=False,
-                    help="Run a gene-by-environment test instead of the gene test; the environment variable should be binary and written as the last column of the covariate file.")
-
-parser.add_option_group(basicGroup)
-parser.add_option_group(advancedGroup)
-parser.add_option_group(experimentalGroup)
-parser.add_option_group(annotationGroup)
-parser.add_option_group(GxEGroup)
-
-(options, args) = parser.parse_args()
-
-import sys
-import os
-import numpy as np
-from scipy import linalg
-from pylmm import input, lmm
-
-if len(args) != 1:
-    parser.print_help()
-    sys.exit()
+outFilename = options.outfileBase
 
 # Reading Annotation File
 if options.afile:
@@ -164,20 +68,11 @@ if options.afile:
         allele = line[1]
         assert len(allele) == 1
         annotation_dict[snp_id] = allele
-
         # print len(annotation_dict.keys())
 
-outFilename = args[0]
-
-if not options.tfile and not options.bfile and not options.emmaFile:
-    #if not options.pfile and not options.tfile and not options.file:
-    parser.error(
-        "You must provide at least one PLINK input file base (--tfile or --bfile) or an EMMA formatted file (--emmaSNP).")
-if not options.kfile:
-    parser.error("Please provide a pre-computed kinship file")
-
 # READING PLINK input
-if options.verbose: sys.stderr.write("Reading SNP input...\n")
+if options.verbose:
+    sys.stderr.write("Reading SNP input...\n")
 if options.bfile:
     IN = input.plink(options.bfile, type='b', phenoFile=options.phenoFile, normGenotype=options.normalizeGenotype)
 elif options.tfile:
@@ -185,11 +80,9 @@ elif options.tfile:
 #elif options.pfile: IN = input.plink(options.pfile,type='p', phenoFile=options.phenoFile,normGenotype=options.normalizeGenotype)
 elif options.emmaFile:
     IN = input.plink(options.emmaFile, type='emma', phenoFile=options.phenoFile, normGenotype=options.normalizeGenotype)
-else:
-    parser.error("You must provide at least one PLINK input file base")
 
 if not os.path.isfile(options.phenoFile or IN.fbase + '.phenos') and not os.path.isfile(options.emmaPheno):
-    parser.error(
+    raise Exception(
         "No .pheno file exist for %s.  Please provide a phenotype file using the --phenofile or --emmaPHENO argument." % (
             options.phenoFile or IN.fbase + '.phenos'))
 
@@ -231,7 +124,7 @@ else:
     X0 = np.ones((IN.phenos.shape[0], 1))
 
 if np.isnan(X0).sum():
-    parser.error(
+    raise Exception(
         "The covariate file %s contains missing values. At this time we are not dealing with this case.  "
         "Either remove those individuals with missing values or replace them in some way.")
 
@@ -282,102 +175,14 @@ X0_origin = X0
 K_origin = K
 if options.kfile2:
     K2_origin = K2
+else:
+    K2_origin = None
+
 for i in range(phenoNum):
     X0 = X0_origin
     K = K_origin
-    if options.kfile2:
-        K2_origin = K2
+    K2 = K2_origin
     Y = IN.phenos[:, i]
-    v = np.isnan(Y)
-    keep = True - v
-    if v.sum():
-        if options.verbose:
-            sys.stderr.write("Cleaning the phenotype vector by removing %d individuals...\n" % (v.sum()))
-        Y = Y[keep]
-        X0 = X0[keep, :]
-        K = K[keep, :][:, keep]
-        if options.kfile2:
-            K2 = K2[keep, :][:, keep]
-        Kva = []
-        Kve = []
-    # Only load the decomposition if we did not remove individuals.
-    # Otherwise it would not be correct and we would have to compute it again.
-    if not v.sum() and options.eigenfile:
-        if options.verbose:
-            sys.stderr.write("Loading pre-computed eigendecomposition...\n")
-        Kva = np.load(options.eigenfile + ".Kva")
-        Kve = np.load(options.eigenfile + ".Kve")
-    else:
-        Kva = []
-        Kve = []
-    # Preprocess the data if a GxE
-    if options.runGxE:
-        print 'Converting data to GxE form...'
-        covariate_exposure = X0[:, -1]
-        snp = np.array([x for x, ignore_id in IN])
-        # import matplotlib
-        # matplotlib.use('agg')
-        # import matplotlib.pyplot as plt
-        # plt.figure(figsize=(100, 80))
-        # import seaborn as sns
-        # sns.heatmap(K)
-        # plt.savefig('K_before.png')
-        exposure_levels = set(covariate_exposure)
-        assert len(exposure_levels) == 2  # We only allow binary covaritates.
-        sorted_snps = []
-        sorted_Ks = []
-        sorted_exposures = []
-        unsort_mask = []
-        for level in exposure_levels:
-            # We need to calculate the kinship separately for each value of
-            # the exposure. Sorting the data will make it "look" nicer
-            # if we ever want to print it out as well.
-            mask = covariate_exposure == level
-            same_covariate_snp = snp[mask]
-            K_block = K[:, mask][mask, :]
-
-            sorted_Ks.append(K_block)
-            unsort_mask.append(np.arange(len(mask))[mask])
-
-        unsort_mask = np.concatenate(unsort_mask)
-        unsort_mask = np.argsort(unsort_mask)
-        # print unsort_mask
-        K_GxE = linalg.block_diag(*sorted_Ks)
-        # print K_GxE
-        # Kinship is 0 between individuals with different
-        # levels for their exposures, so the matrix has
-        # a block-diagonal structure.
-        K = K_GxE[:, unsort_mask]
-        K = K[unsort_mask, :]
-        # plt.figure(figsize=(100, 80))
-        # sns.heatmap(K)
-        # plt.savefig('K_after.png')
-        Kva, Kve = linalg.eigh(K)
-
-        # Check that the kinship matrix has zeroes where covariate exposure is not the same
-        for m in range(len(covariate_exposure)):
-            for n in range(m, len(covariate_exposure)):
-                if covariate_exposure[m] != covariate_exposure[n]:
-                    assert K[m, n] == 0
-        covariate_exposure = covariate_exposure.reshape(covariate_exposure.shape[0], 1)
-
-    print('Beginning Association Tests...')
-    # CREATE LMM object for association
-    n = K.shape[0]
-    if not options.kfile2:
-        L = lmm.LMM(Y, K, Kva, Kve, X0, verbose=options.verbose)
-    else:
-        L = lmm.LMM_withK2(Y, K, Kva, Kve, X0, verbose=options.verbose, K2=K2)
-
-    # Fit the null model -- if refit is true we will refit for each SNP, so no reason to run here
-    if not options.refit:
-        if options.verbose:
-            sys.stderr.write("Computing fit for null model\n")
-        L.fit()
-        if options.verbose and not options.kfile2:
-            sys.stderr.write("\t heritability=%0.3f, sigma=%0.3f\n" % (L.optH, L.optSigma))
-        if options.verbose and options.kfile2:
-            sys.stderr.write("\t heritability=%0.3f, sigma=%0.3f, w=%0.3f\n" % (L.optH, L.optSigma, L.optW))
 
     if phenoNum == 1:
         full_outFilename = outFilename
@@ -385,88 +190,16 @@ for i in range(phenoNum):
         start, end = os.path.splitext(outFilename)
         full_outFilename = start + '_{0}'.format(i) + end
     with open(full_outFilename, 'w') as out:
-        # Buffers for p-values and t-stats
-        PS = []
-        TS = []
-        count = 0
-
         if options.afile:
             printOutHeadAnnotated()
         else:
             printOutHead()
 
-        for snp, id in IN:
-            count += 1
-            if options.verbose and count % 1000 == 0:
-                sys.stderr.write("At SNP %d\n" % count)
+        TS, PS, output_list = lmm.GWAS2(Y, IN, K, K2, Kva=[], Kve=[], X0=X0, REML=True, refit=False)
 
-            x = snp[keep].reshape((n, 1))
-            if options.runGxE:
-                snp_copy = x.copy()
-                this_covariate_exposure = covariate_exposure[keep]
-                # print x
-                # print this_covariate_exposure
-                # print x.shape
-                # print this_covariate_exposure.shape
-                x = x * this_covariate_exposure
-                # print x
-            v = np.isnan(x).reshape((-1,))
-            nmiss = n - v.sum()
-
-            # Check SNPs for missing values
-            if v.sum():  # v.sum() is the number of missing values
-                keeps = True - v
-                xs = x[keeps, :]
-                if keeps.sum() <= 1 or xs.var() <= 1e-6:
-                    PS.append(np.nan)
-                    TS.append(np.nan)
-                    if options.afile:
-                        outputResultAnnotated(id, np.nan, np.nan, np.nan, np.nan, np.nan, annotation_dict=annotation_dict)
-                    else:
-                        outputResult(id, np.nan, np.nan, np.nan, np.nan)
-                    continue
-
-                # Its ok to center the genotype -  I used options.normalizeGenotype to
-                # force the removal of missing genotypes as opposed to replacing them with MAF.
-                if not options.normalizeGenotype:
-                    xs = (xs - xs.mean()) / np.sqrt(xs.var())
-                Ys = Y[keeps]
-                X0s = X0[keeps, :]
-                if options.runGxE:
-                    snp_copys = snp_copy[keeps]
-                    X0s = np.hstack([X0s, snp_copys])
-                Ks = K[keeps, :][:, keeps]
-
-                if options.kfile2:
-                    K2s = K2[keeps, :][:, keeps]
-                if options.kfile2:
-                    Ls = lmm.LMM_withK2(Ys, Ks, X0=X0s, verbose=options.verbose, K2=K2s)
-                else:
-                    Ls = lmm.LMM(Ys, Ks, X0=X0s, verbose=options.verbose)
-                if options.refit:
-                    Ls.fit(X=xs, REML=options.REML)
-                else:
-                    # try:
-                    Ls.fit(REML=options.REML)
-                    # except: pdb.set_trace()
-                ts, ps, beta, betaVar = Ls.association(xs, REML=options.REML, returnBeta=True)
-            else:
-                if x.var() == 0:
-                    PS.append(np.nan)
-                    TS.append(np.nan)
-                    if options.afile:
-                        outputResultAnnotated(id, np.nan, np.nan, np.nan, np.nan, np.nan, annotation_dict=annotation_dict)
-                    else:
-                        outputResult(id, np.nan, np.nan, np.nan, np.nan)
-                    continue
-
-                if options.refit:
-                    L.fit(X=x, REML=options.REML)
-                ts, ps, beta, betaVar = L.association(x, REML=options.REML, returnBeta=True)
-
+        #write output list, include annotation dict if annotate is true
+        for id, beta, sum_sqrt_betaVar, ts, ps, nmiss in output_list:
             if options.afile:
-                outputResultAnnotated(id, beta, np.sqrt(betaVar).sum(), ts, ps, nmiss, annotation_dict=annotation_dict)
+                outputResultAnnotated(id, beta, sum_sqrt_betaVar, ts, ps, nmiss, annotation_dict=annotation_dict)
             else:
-                outputResult(id, beta, np.sqrt(betaVar).sum(), ts, ps)
-            PS.append(ps)
-            TS.append(ts)
+                outputResult(id, beta, sum_sqrt_betaVar, ts, ps)

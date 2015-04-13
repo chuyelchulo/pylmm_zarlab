@@ -26,7 +26,7 @@ import sys
 import numpy as np
 import struct
 import pdb
-
+import argparse
 
 class plink:
     def __init__(self, fbase, kFile=None, phenoFile=None, type='b', normGenotype=True, readKFile=False,
@@ -383,3 +383,127 @@ class plink:
         P = P[L, :]
 
         return P
+
+
+def get_pylmm_parser(usage):
+    parser = argparse.ArgumentParser(usage=usage)
+
+    parser.add_argument("outfileBase", help="The base name to use for the output file")
+
+    basicGroup = parser.add_argument_group("basic", "Basic Options")
+    advancedGroup = parser.add_argument_group("advanced", "Advanced Options")
+    experimentalGroup = parser.add_argument_group("experimental", "Experimental Options")
+    annotationGroup = parser.add_argument_group("annotation", "Annotation Options")
+    GxEGroup = parser.add_argument_group("GxE", "GxE Options")
+
+    #basicGroup.add_argument("--pfile", dest="pfile",
+    #                  help="The base for a PLINK ped file")
+    basicGroup.add_argument("--tfile", dest="tfile",
+                          help="The base for a PLINK tped file")
+    basicGroup.add_argument("--bfile", dest="bfile",
+                          help="The base for a PLINK binary bed file")
+    basicGroup.add_argument("--phenofile", dest="phenoFile", default=None,
+                          help="Without this argument the program will look for a file with .pheno that has the plinkFileBase root.  If you want to specify an alternative phenotype file, then use this argument.  This file should be in plink format. ")
+
+    # EMMA Options
+    basicGroup.add_argument("--emmaSNP", dest="emmaFile", default=None,
+                          help="For backwards compatibility with emma, we allow for \"EMMA\" file formats.  This is just a text file with individuals on the columns and snps on the rows.")
+    basicGroup.add_argument("--emmaPHENO", dest="emmaPheno", default=None,
+                          help="For backwards compatibility with emma, we allow for \"EMMA\" file formats.  This is just a text file with each phenotype as one row.")
+    basicGroup.add_argument("--emmaCOV", dest="emmaCov", default=None,
+                          help="For backwards compatibility with emma, we allow for \"EMMA\" file formats.  This is just a text file with each covariate as one row.")
+    basicGroup.add_argument("--emmaNumSNPs", dest="numSNPs", type=int, default=0,
+                         help="When providing the emmaSNP file you need to specify how many snps are in the file")
+
+    basicGroup.add_argument("--kfile", dest="kfile",
+                          help="The location of a kinship file.  This is an nxn plain text file and can be computed with the pylmmKinship program.")
+    basicGroup.add_argument("--covfile", dest="covfile",
+                          help="The location of a covariate file file.  This is a plink formatted covariate file.")
+    basicGroup.add_argument("-p", type=int, dest="pheno", help="The phenotype index to be used in association.", default=0)
+    basicGroup.add_argument("-n", default=1000,dest="computeSize", type=int,
+                                 help="The maximum number of SNPs to read into memory at once when creating kinship matrices (default 1000).  This is important when there is a large number of SNPs, because memory could be an issue.")
+
+    advancedGroup.add_argument("--removeMissingGenotypes",
+                             action="store_false", dest="normalizeGenotype", default=True,
+                             help="By default the program replaces missing genotypes with the minor allele frequency.  This option overrides that behavior making the program remove missing individuals.  NOTE: This can increase running time due to the need to recompute the eigendecomposition for each SNP with missing values.")
+    advancedGroup.add_argument("--refit",
+                             action="store_true", dest="refit", default=False,
+                             help="Refit the variance components at each SNP (default is to lock in the variance components under the null).")
+
+    advancedGroup.add_argument("--REML",
+                             action="store_true", dest="REML", default=False,
+                             help="Use restricted maximum-likelihood (REML) (default is maximum-likelihood).")
+    advancedGroup.add_argument("-e", "--efile", dest="saveEig", help="Save eigendecomposition to this file.")
+    advancedGroup.add_argument("--eigen", dest="eigenfile",
+                             help="The location of the precomputed eigendecomposition for the kinship file.  These can be computed with pylmmKinship.py.")
+    advancedGroup.add_argument("--noMean", dest="noMean", default=False, action="store_true",
+                             help="This option only applies when --cofile is used.  When covfile is provided, the program will automatically add a global mean covariate to the model unless this option is specified.")
+
+    advancedGroup.add_argument("-v", "--verbose",
+                             action="store_true", dest="verbose", default=False,
+                             help="Print extra info")
+
+    # Experimental Group Options
+    experimentalGroup.add_argument("--kfile2", dest="kfile2",
+                                 help="The location of a second kinship file.  This file has the same format as the first kinship.  This might be used if you want to correct for another form of confounding.")
+
+    # Annotation Group Options
+    annotationGroup.add_argument("--afile", dest="afile", default=False,
+                               help="The location of an annotation file.  This file is (as yet) formatted in two columns. The first column has IDs and the second has the nucleotides you want printed.")
+
+    # GxE Group
+    GxEGroup.add_argument("--gxe", "--GxE",
+                        action="store_true", dest="runGxE", default=False,
+                        help="Run a gene-by-environment test instead of the gene test; the environment variable should be binary and written as the last column of the covariate file.")
+
+    return parser
+
+def get_gwas_parser():
+    usage = """usage: %prog [options] --kfile kinshipFile --[tfile | bfile | emmaSNP] plinkFileBase outfileBase --afile annotationfile --GxE
+
+    This program provides basic genome-wide association (GWAS) functionality.
+    You provide a phenotype and genotype file as well as a pre-computed (use pylmmKinship.py)
+    kinship matrix and the program outputs a result file with information about each SNP, including the association p-value.
+    The input file are all standard plink formatted with the first two columns specifying the individual and family ID.
+    For the phenotype file, we accept either NA or -9 to denote missing values.
+
+    Basic usage:
+
+          python pylmmGWAS.py -v --bfile plinkFile --kfile preComputedKinship.kin --phenofile plinkFormattedPhenotypeFile resultFile
+
+            """
+    parser = get_pylmm_parser(usage)
+    options = parser.parse_args()
+
+    if not options.tfile and not options.bfile and not options.emmaFile:
+        parser.error(
+            "You must provide at least one PLINK input file base (--tfile or --bfile) or an EMMA formatted file (--emmaSNP).")
+
+    if not options.kfile:
+        parser.error("Please provide a pre-computed kinship file")
+
+    return parser
+
+def get_kinship_parser():
+    usage = """usage: %prog [options] --[tfile | bfile] plinkFileBase outfile[.gz]
+
+    This program creates a kinship matrix for use with the pylmmGWAS script, using
+    the genotype file you provide as input.
+
+    Basic usage:
+
+          python pylmmKinship.py -v --bfile plinkFile resultFile
+
+    """
+    parser = get_pylmm_parser(usage)
+    options = parser.parse_args()
+
+    if not options.tfile and not options.bfile and not options.emmaFile:
+        parser.error(
+            "You must provide at least one PLINK input file base (--tfile or --bfile) or an EMMA formatted file (--emmaSNP).")
+
+    if options.emmaFile and not options.numSNPs:
+        parser.error(
+            "You must specify the number of SNPs when using EMMA formatted files.")
+
+    return parser
