@@ -23,9 +23,22 @@
 #NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 #SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+
+
+import os
 import pdb
-import time
 import sys
+import gzip
+import time
+import pandas
+import numpy as np
+import multiprocessing
+from time import sleep
+from scipy import linalg
+from pylmm.lmm import LMM
+from pylmm import input
+from itertools import imap
+from optparse import OptionParser, OptionGroup, Option, OptionValueError 
 
 def printOutHead(): out.write("\t".join(["SNP_ID","BETA","BETA_SD","F_STAT","P_VALUE"]) + "\n")
 def outputResult(id,beta,betaSD,ts,ps):
@@ -104,12 +117,6 @@ parser.add_option_group(experimentalGroup)
 
 (options, args) = parser.parse_args()
 
-import sys
-import os
-import numpy as np
-from scipy import linalg
-from pylmm.lmm import LMM
-from pylmm import input
 
 if len(args) != 1:  
    parser.print_help()
