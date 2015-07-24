@@ -211,6 +211,7 @@ class plink:
 	 #sys.stderr.write("Could not find phenotype file: %s\n" % (phenoFile))
 	 return
       f = open(phenoFile,'r')
+      f.readline() # skip header line
       keys = []
       P = []
       for line in f:

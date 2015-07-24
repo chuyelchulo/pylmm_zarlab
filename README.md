@@ -1,5 +1,6 @@
 
-## pylmm - A lightweight linear mixed-model solver
+## pylmm \
+    - A lightweight linear mixed-model solver
 
 pylmm is a fast and lightweight linear mixed-model (LMM) solver for use in genome-wide association studies (GWAS).
 
@@ -7,9 +8,17 @@ pylmm has a standalone program for running association studies called pylmmGWAS.
 
 ### An Example Command:
 
-```
-python pylmmGWAS.py -v --bfile data/snps.132k.clean.noX --kfile data/snps.132k.clean.noX.pylmm.kin --phenofile data/snps.132k.clean.noX.fake.phenos out.foo
-```
+    python scripts/pylmmGWAS.py \
+        -v \
+        --phenoID height \
+        --covID AGE  \
+        --bfile data/snps.132k.clean.noX \
+        --cores 4 \
+        --kfile data/snps.132k.clean.noX.pylmm.kin \
+        --covfile data/snps.132k.clean.noX.fake.cov  \
+        --phenofile data/snps.132k.clean.noX.fake.phenos \
+        out.foo
+
 
 The GWAS program pylmmGWAS.py reads PLINK formated input files (BED or TPED only).  There is also an option to use "EMMA" formatted files.  We included this in order to make it easier for people using EMMA currently to try pylmm.  The kinship matrix file can be calculated using pylmmKinship.py which also takes PLINK or EMMA files as input.  The kinship matrix output is just a plain text file and follows the same format as that used by EMMA, so that you can use pre-computed kinship matrices from EMMA as well, or any other program for that matter.
 
