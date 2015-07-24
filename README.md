@@ -10,8 +10,12 @@ pylmm has a standalone program for running association studies called pylmmGWAS.
 
     python scripts/pylmmGWAS.py \
         -v \
+        --phenoID height \
+        --covID AGE  \
         --bfile data/snps.132k.clean.noX \
+        --cores 4 \
         --kfile data/snps.132k.clean.noX.pylmm.kin \
+        --covfile data/snps.132k.clean.noX.fake.cov  \
         --phenofile data/snps.132k.clean.noX.fake.phenos \
         out.foo
 
