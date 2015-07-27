@@ -2,3 +2,5 @@ out.foo
 *.egg*
 *.pyc
 data/*
+.idea
+build
