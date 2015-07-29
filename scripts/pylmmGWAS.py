@@ -203,9 +203,14 @@ parser.add_option_group(experimentalGroup)
 (options, args) = parser.parse_args()
 
 
-if len(args) != 1:  
-   parser.print_help()
+if len(args) != 1:
+   print args
+   print options
+   # parser.print_help()
    sys.exit()
+else:
+    print args
+    print options
 
 outFile = args[0]
 
