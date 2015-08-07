@@ -127,6 +127,9 @@ GxEGroup.add_option("--gxe", "--GxE",
                     action="store_true", dest="runGxE", default=False,
                     help="Run a gene-by-environment test instead of the gene test; the environment variable should be binary and written as the last column of the covariate file.")
 
+GxEGroup.add_option("--noKCorrection", action="store_true", dest="noKCorrection", default=False,
+        help="If this flag is present, the kinship matrix provided will not be corrected by setting kinship values for individuals with different covariate values to zero. This may be useful for non-binary covariates and for running tests on gene-environment interaction studies")
+
 parser.add_option_group(basicGroup)
 parser.add_option_group(advancedGroup)
 parser.add_option_group(experimentalGroup)
@@ -311,7 +314,7 @@ for i in range(phenoNum):
         Kva = []
         Kve = []
     # Preprocess the data if a GxE
-    if options.runGxE:
+    if options.runGxE and not options.noKCorrection:
         print 'Converting data to GxE form...'
         covariate_exposure = X0[:, -1]
         snp = np.array([x for x, ignore_id in IN])
