@@ -28,6 +28,8 @@ import time
 import sys
 
 
+LIMIT = 1000
+
 def printOutHead(): out.write("\t".join(["SNP_ID", "BETA", "BETA_SD", "F_STAT", "P_VALUE"]) + "\n")
 
 
@@ -114,6 +116,9 @@ advancedGroup.add_option("-v", "--verbose",
                          action="store_true", dest="verbose", default=False,
                          help="Print extra info")
 
+advancedGroup.add_option("--limit",
+                         action="store_true", dest="limit", default=False)
+
 # Experimental Group Options
 experimentalGroup.add_option("--kfile2", dest="kfile2",
                              help="The location of a second kinship file.  This file has the same format as the first kinship.  This might be used if you want to correct for another form of confounding.")
@@ -129,6 +134,14 @@ GxEGroup.add_option("--gxe", "--GxE",
 
 GxEGroup.add_option("--noKCorrection", action="store_true", dest="noKCorrection", default=False,
         help="If this flag is present, the kinship matrix provided will not be corrected by setting kinship values for individuals with different covariate values to zero. This may be useful for non-binary covariates and for running tests on gene-environment interaction studies")
+
+GxEGroup.add_option("--testOLS",
+                    action="store_true", dest="testOLS", default=False,
+                    help="Allows you to run a test on GxE interactions using faulty hypotheses (no Kinship)")
+
+GxEGroup.add_option("--testOneRE",
+                    action="store_true", dest="testOneRE", default=False,
+                    help="Allows you to run a test on GxE interactions using faulty hypotheses (Gene-only kinship)")
 
 parser.add_option_group(basicGroup)
 parser.add_option_group(advancedGroup)
@@ -314,59 +327,21 @@ for i in range(phenoNum):
         Kva = []
         Kve = []
     # Preprocess the data if a GxE
-    if options.runGxE and not options.noKCorrection:
-        print 'Converting data to GxE form...'
+    if options.runGxE:
         covariate_exposure = X0[:, -1]
-        snp = np.array([x for x, ignore_id in IN])
-        # import matplotlib
-        # matplotlib.use('agg')
-        # import matplotlib.pyplot as plt
-        # plt.figure(figsize=(100, 80))
-        # import seaborn as sns
-        # sns.heatmap(K)
-        # plt.savefig('K_before.png')
-        exposure_levels = set(covariate_exposure)
-        assert len(exposure_levels) == 2  # We only allow binary covaritates.
-        sorted_snps = []
-        sorted_Ks = []
-        sorted_exposures = []
-        unsort_mask = []
-        for level in exposure_levels:
-            # We need to calculate the kinship separately for each value of
-            # the exposure. Sorting the data will make it "look" nicer
-            # if we ever want to print it out as well.
-            mask = covariate_exposure == level
-            same_covariate_snp = snp[mask]
-            K_block = K[:, mask][mask, :]
-
-            sorted_Ks.append(K_block)
-            unsort_mask.append(np.arange(len(mask))[mask])
-
-        unsort_mask = np.concatenate(unsort_mask)
-        unsort_mask = np.argsort(unsort_mask)
-        # print unsort_mask
-        K_GxE = linalg.block_diag(*sorted_Ks)
-        # print K_GxE
-        # Kinship is 0 between individuals with different
-        # levels for their exposures, so the matrix has
-        # a block-diagonal structure.
-        K = K_GxE[:, unsort_mask]
-        K = K[unsort_mask, :]
-        # plt.figure(figsize=(100, 80))
-        # sns.heatmap(K)
-        # plt.savefig('K_after.png')
-        Kva, Kve = linalg.eigh(K)
-
-        # Check that the kinship matrix has zeroes where covariate exposure is not the same
-        for m in range(len(covariate_exposure)):
-            for n in range(m, len(covariate_exposure)):
-                if covariate_exposure[m] != covariate_exposure[n]:
-                    assert K[m, n] == 0
         covariate_exposure = covariate_exposure.reshape(covariate_exposure.shape[0], 1)
-    elif options.runGxE and options.noKCorrection:
-        covariate_exposure = X0[:, -1]
-    else:
-        pass
+        # if not options.noKCorrection:
+        #     print 'Converting data to GxE form...'
+        #     same_covariate_mask = np.array([covariate_exposure == covariate_exposure[i]])
+        #     same_covariate_mask = same_covariate_mask.astype(int)
+        #     K = K*same_covariate_mask
+        #
+        #     # Check that the kinship matrix has zeroes where covariate exposure is not the same
+        #     for m in range(len(covariate_exposure)):
+        #         for n in range(m, len(covariate_exposure)):
+        #             if covariate_exposure[m] != covariate_exposure[n]:
+        #                 assert K[m, n] == 0
+        Kva, Kve = linalg.eigh(K)
 
     print('Beginning Association Tests...')
     # CREATE LMM object for association
@@ -406,6 +381,11 @@ for i in range(phenoNum):
             count += 1
             if options.verbose and count % 1000 == 0:
                 sys.stderr.write("At SNP %d\n" % count)
+            if options.limit:
+                if count > 10*LIMIT:
+                    break
+                if count % 10 != 0:
+                    continue
 
             x = snp[keep].reshape((n, 1))
             if options.runGxE:
@@ -461,6 +441,10 @@ for i in range(phenoNum):
                         outputResult(id, np.nan, np.nan, np.nan, np.nan)
                     continue
 
+                if options.runGxE:
+                    GxE_X0 = np.hstack([X0, snp_copy])
+                    L = lmm.LMM(Y, K, Kva, Kve, GxE_X0, verbose=options.verbose)
+                    L.fit()
                 if options.refit:
                     L.fit(X=x, REML=options.REML)
                 ts, ps, beta, betaVar = L.association(x, REML=options.REML, returnBeta=True)
