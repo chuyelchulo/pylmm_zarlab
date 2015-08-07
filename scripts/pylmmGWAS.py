@@ -363,6 +363,10 @@ for i in range(phenoNum):
                 if covariate_exposure[m] != covariate_exposure[n]:
                     assert K[m, n] == 0
         covariate_exposure = covariate_exposure.reshape(covariate_exposure.shape[0], 1)
+    elif options.runGxE and options.noKCorrection:
+        covariate_exposure = X0[:, -1]
+    else:
+        pass
 
     print('Beginning Association Tests...')
     # CREATE LMM object for association
@@ -406,13 +410,7 @@ for i in range(phenoNum):
             x = snp[keep].reshape((n, 1))
             if options.runGxE:
                 snp_copy = x.copy()
-                this_covariate_exposure = covariate_exposure[keep]
-                # print x
-                # print this_covariate_exposure
-                # print x.shape
-                # print this_covariate_exposure.shape
-                x = x * this_covariate_exposure
-                # print x
+                x = x * covariate_exposure
             v = np.isnan(x).reshape((-1,))
             nmiss = n - v.sum()
 

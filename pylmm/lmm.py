@@ -320,7 +320,10 @@ class LMM:
         S = 1.0 / (h * self.Kva + (1.0 - h))
         Xt = X.T * S
         XX = matrixMult(Xt, X)
-        XX_i = linalg.inv(XX)
+        try:
+            XX_i = linalg.inv(XX)
+        except numpy.linalg.linalg.LinAlgError:
+            return np.nan, np.nan, np.nan, np.nan, np.nan
         beta = matrixMult(matrixMult(XX_i, Xt), self.Yt)
         Yt = self.Yt - matrixMult(X, beta)
         Q = np.dot(Yt.T * S, Yt)
