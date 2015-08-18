@@ -193,7 +193,8 @@ if not options.kfile:
     parser.error("Please provide a pre-computed kinship file")
 
 # READING PLINK input
-if options.verbose: sys.stderr.write("Reading SNP input...\n")
+if options.verbose:
+    sys.stderr.write("Reading SNP input...\n")
 if options.bfile:
     IN = input.plink(options.bfile, type='b', phenoFile=options.phenoFile, normGenotype=options.normalizeGenotype)
 elif options.tfile:
@@ -330,6 +331,9 @@ for i in range(phenoNum):
     if options.runGxE:
         covariate_exposure = X0[:, -1]
         covariate_exposure = covariate_exposure.reshape(covariate_exposure.shape[0], 1)
+        assert len(set(covariate_exposure)) == 2  # Only accept binary covariates for now
+        if options.verbose:
+            sys.stderr.write(covariate_exposure)
         # if not options.noKCorrection:
         #     print 'Converting data to GxE form...'
         #     same_covariate_mask = np.array([covariate_exposure == covariate_exposure[i]])
