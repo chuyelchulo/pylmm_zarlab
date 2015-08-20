@@ -265,6 +265,8 @@ if options.kfile[-3:] == '.gz':
 else:
     K = np.fromfile(open(options.kfile, 'r'), sep=" ")
 K.resize((len(IN.indivs), len(IN.indivs)))
+if np.isnan(K).any():
+    raise ValueError("No NaN values allowed in kinship matrix")
 end = time.time()
 # Other slower ways
 #K = np.loadtxt(options.kfile)
@@ -436,7 +438,9 @@ for i in range(phenoNum):
                     PS.append(np.nan)
                     TS.append(np.nan)
                     if options.afile:
-                        outputResultAnnotated(id, np.nan, np.nan, np.nan, np.nan, np.nan, annotation_dict=annotation_dict)
+                        outputResultAnnotated(id, np.nan, np.nan,
+                                              np.nan, np.nan, np.nan,
+                                              annotation_dict=annotation_dict)
                     else:
                         outputResult(id, np.nan, np.nan, np.nan, np.nan)
                     continue
