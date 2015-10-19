@@ -107,25 +107,41 @@ else:
         " or an emma formatted file (--emmaSNP).")
 
 K_G = lmm.calculateKinshipIncremental(IN, numSNPs=options.numSNPs,
-                                    computeSize=options.computeSize, center=False, missing="MAF")
+                                      computeSize=options.computeSize, center=False, missing="MAF")
+
+if options.runGxE:
+    K_G_outfile = '{}_K_G{}'.format(*os.path.splitext(outFile))
+else:
+    K_G_outfile = outFile
+if options.verbose:
+    sys.stderr.write("Saving Genetic Kinship file to %s\n" % K_G_outfile)
+np.savetxt(K_G_outfile, K_G)
+
+if options.saveEig:
+    if options.verbose:
+        sys.stderr.write("Obtaining Eigendecomposition of K_G\n")
+    K_Gva, K_Gve = lmm.calculateEigendecomposition(K_G)
+    if options.verbose:
+        sys.stderr.write("Saving eigendecomposition to %s.[kva | kve]\n" % K_G_outfile)
+    np.savetxt("{}.kva".format(K_G_outfile), K_Gva)
+    np.savetxt("{}.kve".format(K_G_outfile), K_Gve)
 
 if options.runGxE:
     if options.verbose:
         sys.stderr.write("Reading covariate file...\n")
     X0 = IN.getCovariates(options.covfile)
     K_GxE = make_K_GxE(K_G=K_G, env=X0[:, -1])
-
-    components = grid_search()
-else:
+    K_GxE_outfile = '{}_K_GxE'.format(outFile)
     if options.verbose:
-        sys.stderr.write("Saving Kinship file to %s\n" % outFile)
-    np.savetxt(outFile, K)
-
+        sys.stderr.write("Saving GxE Kinship file to %s\n" % K_G_outfile)
+    np.savetxt(K_GxE_outfile, K_GxE)
     if options.saveEig:
         if options.verbose:
-            sys.stderr.write("Obtaining Eigendecomposition\n")
-        Kva, Kve = lmm.calculateEigendecomposition(K_G)
+            sys.stderr.write("Obtaining Eigendecomposition of K_GxE\n")
+        K_GxEva, K_GxEve = lmm.calculateEigendecomposition(K_GxE)
         if options.verbose:
-            sys.stderr.write("Saving eigendecomposition to %s.[kva | kve]\n" % outFile)
-        np.savetxt(outFile + ".kva", Kva)
-        np.savetxt(outFile + ".kve", Kve)
+            sys.stderr.write("Saving eigendecomposition to %s.[kva | kve]\n" % K_GxE_outfile)
+        np.savetxt("{}.kva".format(K_GxE_outfile), K_GxEva)
+        np.savetxt("{}.kve".format(K_GxE_outfile), K_GxEve)
+
+    components = grid_search()
