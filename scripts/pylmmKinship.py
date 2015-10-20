@@ -28,7 +28,7 @@ import pdb
 
 from optparse import OptionParser, OptionGroup
 
-usage = """usage: %prog [options] --[tfile | bfile] plinkFileBase outfile (--GxE --covfile covfile)
+usage = """usage: %prog [options] --[tfile | bfile] plinkFileBase outfile (--GxE --covfile covfile [--phenofile phenoFile])
 """
 
 parser = OptionParser(usage=usage)
@@ -67,8 +67,14 @@ GxEGroup.add_option("--gxe", "--GxE",
 GxEGroup.add_option("--covfile", dest="covfile", default=None,
                     help="The environment filename (no header)")
 
+GxEGroup.add_option("--phenofile", dest="phenoFile", default=None,
+                    help="Without this argument the program will look "
+                         "for a file with .pheno that has the plinkFileBase root.  "
+                         "If you want to specify an alternative phenotype file, "
+                         "then use this argument.  This file should be in plink format. ")
+
 parser.add_option_group(basicGroup)
-parser.add_optin_group(GxEGroup)
+parser.add_option_group(GxEGroup)
 # parser.add_option_group(advancedGroup)
 
 (options, args) = parser.parse_args()
@@ -83,7 +89,7 @@ import os
 import numpy as np
 from scipy import linalg
 from pylmm import input, lmm
-from estimate_variance_components import make_K_GxE
+import estimate_variance_components
 
 if not options.tfile and not options.bfile and not options.emmaFile:
     parser.error(
@@ -92,19 +98,30 @@ if not options.tfile and not options.bfile and not options.emmaFile:
 
 if options.verbose:
     sys.stderr.write("Reading PLINK input...\n")
-if options.bfile:
-    IN = input.plink(options.bfile, type='b')
-elif options.tfile:
-    IN = input.plink(options.tfile, type='t')
-# elif options.pfile: IN = input.plink(options.pfile,type='p')
-elif options.emmaFile:
-    if not options.numSNPs:
-        parser.error("You must provide the number of SNPs when specifying an emma formatted file.")
-    IN = input.plink(options.emmaFile, type='emma')
+
+if options.runGxE:
+    if options.bfile:
+        IN = input.plink(options.bfile, type='b', phenoFile=options.phenoFile)
+    elif options.tfile:
+        IN = input.plink(options.tfile, type='t', phenoFile=options.phenoFile)
+    else:
+        parser.error(
+            "You must provide at least one PLINK input file base (--tfile or --bfile)"
+            " or an emma formatted file (--emmaSNP).")
 else:
-    parser.error(
-        "You must provide at least one PLINK input file base (--tfile or --bfile)"
-        " or an emma formatted file (--emmaSNP).")
+    if options.bfile:
+        IN = input.plink(options.bfile, type='b')
+    elif options.tfile:
+        IN = input.plink(options.tfile, type='t')
+    # elif options.pfile: IN = input.plink(options.pfile,type='p')
+    elif options.emmaFile:
+        if not options.numSNPs:
+            parser.error("You must provide the number of SNPs when specifying an emma formatted file.")
+        IN = input.plink(options.emmaFile, type='emma')
+    else:
+        parser.error(
+            "You must provide at least one PLINK input file base (--tfile or --bfile)"
+            " or an emma formatted file (--emmaSNP).")
 
 K_G = lmm.calculateKinshipIncremental(IN, numSNPs=options.numSNPs,
                                       computeSize=options.computeSize, center=False, missing="MAF")
@@ -130,18 +147,18 @@ if options.runGxE:
     if options.verbose:
         sys.stderr.write("Reading covariate file...\n")
     X0 = IN.getCovariates(options.covfile)
-    K_GxE = make_K_GxE(K_G=K_G, env=X0[:, -1])
-    K_GxE_outfile = '{}_K_GxE'.format(outFile)
+    Y = IN.getPhenos(options.phenoFile)
+    components, K_combined = estimate_variance_components.main(Y=Y, K_G=K_G, env=X0)
+
+    K_combined_outfile = '{}_K_combined'.format(outFile)
     if options.verbose:
-        sys.stderr.write("Saving GxE Kinship file to %s\n" % K_G_outfile)
-    np.savetxt(K_GxE_outfile, K_GxE)
+        sys.stderr.write("Saving GxE & Genetic Combined Kinship file to %s\n" % K_combined_outfile)
+    np.savetxt(K_combined_outfile, K_combined)
     if options.saveEig:
         if options.verbose:
-            sys.stderr.write("Obtaining Eigendecomposition of K_GxE\n")
-        K_GxEva, K_GxEve = lmm.calculateEigendecomposition(K_GxE)
+            sys.stderr.write("Obtaining Eigendecomposition of K_combined\n")
+        K_combined_va, K_combined_ve = lmm.calculateEigendecomposition(K_combined)
         if options.verbose:
-            sys.stderr.write("Saving eigendecomposition to %s.[kva | kve]\n" % K_GxE_outfile)
-        np.savetxt("{}.kva".format(K_GxE_outfile), K_GxEva)
-        np.savetxt("{}.kve".format(K_GxE_outfile), K_GxEve)
-
-    components = grid_search()
+            sys.stderr.write("Saving eigendecomposition to %s.[kva | kve]\n" % K_combined_outfile)
+        np.savetxt("{}.kva".format(K_combined_outfile), K_combined_va)
+        np.savetxt("{}.kve".format(K_combined_outfile), K_combined_ve)
