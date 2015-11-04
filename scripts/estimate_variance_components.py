@@ -1,8 +1,6 @@
 import numpy as np
 import numpy.linalg as npl
 import itertools
-from pylmm import input, lmm
-
 
 MIN_HERITABILITY_FRAC = 10**-6
 
@@ -78,6 +76,18 @@ def make_K_GxE(K_G, env):
     return K_GxE
 
 
+def remove_fixed_effects(Y, env):
+    env_vals = sorted(list(set(env)))
+    mu = np.mean(Y)
+    Y -= mu
+    mu_0 = np.mean(Y[env == env_vals[0]])
+    for env_value in env_vals:
+        mu_i = np.mean(Y[env == env_value])
+        Y[env == env_value] += mu_i - mu_0
+    Y -= mus
+    return Y
+
+
 def main(Y, K_G, env, fineness=300):
     good_Ys = ~np.isnan(Y)
     good_envs = ~np.isnan(env)
@@ -85,13 +95,14 @@ def main(Y, K_G, env, fineness=300):
 
     good_Y = Y[complete_indiv_mask]
     good_env = env[complete_indiv_mask]
-
-    good_X = np.column_stack((good_env, ))
-
     good_K_G = K_G[:, complete_indiv_mask][complete_indiv_mask, :]
     good_K_GxE = make_K_GxE(good_K_G, good_env)
 
-    components = grid_search(K_G=good_K_G, K_GxE=good_K_GxE, X=good_X, Y=good_Y, fineness=fineness)
+    good_X = np.column_stack((good_env, ))
+
+    reml_Y = remove_fixed_effects(good_Y, good_env)
+
+    components = grid_search(K_G=good_K_G, K_GxE=good_K_GxE, X=good_X, Y=reml_Y, fineness=fineness)
     return components
 
 
