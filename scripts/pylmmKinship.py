@@ -25,6 +25,7 @@
 
 import sys
 import pdb
+import estimate_variance_components
 
 from optparse import OptionParser, OptionGroup
 
@@ -127,7 +128,7 @@ K_G = lmm.calculateKinshipIncremental(IN, numSNPs=options.numSNPs,
                                       computeSize=options.computeSize, center=False, missing="MAF")
 
 if options.runGxE:
-    K_G_outfile = '{}_K_G{}'.format(*os.path.splitext(outFile))
+    K_G_outfile = '{}_K_G.pylmm.kin'.format(outFile)
 else:
     K_G_outfile = outFile
 if options.verbose:
@@ -147,13 +148,30 @@ if options.runGxE:
     if options.verbose:
         sys.stderr.write("Reading covariate file...\n")
     X0 = IN.getCovariates(options.covfile)
+    X0 = np.array([u[0] for u in X0])
     Y = IN.getPhenos(options.phenoFile)
-    components, K_combined = estimate_variance_components.main(Y=Y, K_G=K_G, env=X0)
+    Y = np.array([u[0] for u in Y])
+    print X0
+    print '---------'
+    print Y
+    components_dict, K_combined = estimate_variance_components.main(Y=Y, K_G=K_G, env=X0)
 
-    K_combined_outfile = '{}_K_combined'.format(outFile)
+    K_combined_outfile = '{}_K_combined.pylmm.kin'.format(outFile)
     if options.verbose:
         sys.stderr.write("Saving GxE & Genetic Combined Kinship file to %s\n" % K_combined_outfile)
     np.savetxt(K_combined_outfile, K_combined)
+
+    K_combined_varcomp_outfile = '{}_K_combined_varcomps.txt'.format(outFile)
+    with open(K_combined_varcomp_outfile, 'w') as f:
+        val_sum = sum(components_dict.values())
+        outputs, output_divs = [], []
+        for k in sorted(components_dict.keys()):
+            outputs.append('{}\t{}'.format(k, components_dict[k]))
+            output_divs.append('{}\t{:.3}%'.format('{}/V_p'.format(k), 100*components_dict[k]/val_sum))
+        outputs = ['V_p\t{}'.format(val_sum)] + outputs
+        output_str = '\n'.join(outputs + output_divs)
+        f.write(output_str)
+
     if options.saveEig:
         if options.verbose:
             sys.stderr.write("Obtaining Eigendecomposition of K_combined\n")
