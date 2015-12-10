@@ -2,3 +2,5 @@
 data/*
 .idea
 build
+*.pylmm.kin
+*_varcomps.txt

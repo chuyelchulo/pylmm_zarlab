@@ -132,9 +132,6 @@ GxEGroup.add_option("--gxe", "--GxE",
                     action="store_true", dest="runGxE", default=False,
                     help="Run a gene-by-environment test instead of the gene test; the environment variable should be binary and written as the last column of the covariate file.")
 
-GxEGroup.add_option("--noKCorrection", action="store_true", dest="noKCorrection", default=False,
-        help="If this flag is present, the kinship matrix provided will not be corrected by setting kinship values for individuals with different covariate values to zero. This may be useful for non-binary covariates and for running tests on gene-environment interaction studies")
-
 GxEGroup.add_option("--testOLS",
                     action="store_true", dest="testOLS", default=False,
                     help="Allows you to run a test on GxE interactions using faulty hypotheses (no Kinship)")
